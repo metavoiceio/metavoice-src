@@ -184,3 +184,4 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 **/.tmp
+!fam/quantiser/audio/speaker_encoder/ckpt/ckpt.pt
