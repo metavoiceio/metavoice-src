@@ -9,7 +9,7 @@ MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for 
 
 We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used without restrictions*.
 
-<audio src="https://cdn.themetavoice.xyz/github_readme_bria.wav" controls style="margin: 0 auto;"></audio>
+Try out [demo](https://ttsdemo.themetavoice.xyz/)!
 
 ## Installation
 ```bash
