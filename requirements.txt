@@ -1,0 +1,17 @@
+torch>=2.1.0
+transformers
+librosa
+tqdm
+tiktoken==0.5.1
+audiocraft
+numpy<1.25
+ninja
+flash-attn
+fastapi
+uvicorn
+tyro
+deepfilternet
+pydub
+soundfile
+gradio
+huggingface_hub
