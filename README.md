@@ -28,7 +28,7 @@ pip install -e .
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py),
 ```bash
-python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" --spk_cond_path=<PATH_TO_TARGET_AUDIO>
+python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" --spk_cond_path="assets/ava.flac"
 ```
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py)
