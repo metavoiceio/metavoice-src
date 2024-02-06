@@ -1,4 +1,4 @@
-# <img src="./assets/logo.png" style="vertical-align:middle; margin-bottom:6px;" alt="Logo" width="36" height="36"/>   MetaVoice
+# MetaVoice-1B
 
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
 * **Emotional speech rhythm and tone** in English. No hallucinations.
