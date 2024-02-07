@@ -25,7 +25,7 @@ services:
     tty: true # enable colorized logs
     build:
       context: .
-    command: ['--huggingface_repo_id="metavoiceio/metavoice-1B-v0.1"']
+    command: ['--huggingface_repo_id="metavoiceio/metavoice-1B-v0.1"', "--port=80"]
     ports:
       - 8069:80
     networks:

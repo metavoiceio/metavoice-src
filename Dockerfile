@@ -18,15 +18,16 @@ RUN wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz 
 
 RUN pip install torch packaging wheel
 WORKDIR /app
-COPY . .
+COPY requirements.txt requirements.txt
 # install python packages
-RUN pip install -r requirements.txt &&\
-    pip install -e .
+RUN pip install -r requirements.txt
+COPY . .
+RUN pip install -e .
 RUN apt-get remove -y git build-essential && \  
     apt-get autoremove -y && \  
     apt-get clean  && \  
     rm -rf /var/lib/apt/lists/*  
 
-#RUN apt-get clean
 RUN pip cache purge
-ENTRYPOINT [ "python", "fam/llm/serving.py" ]
+
+ENTRYPOINT [ "python3.10", "fam/llm/serving.py" ]
