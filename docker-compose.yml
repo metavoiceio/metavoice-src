@@ -1,0 +1,44 @@
+version: "3.5"
+
+networks:
+  metavoice-net:
+    driver: bridge
+
+volumes:
+  hf-cache:
+    driver: local
+
+services:
+  metavoice-server:
+    volumes:
+      - hf-cache:/.hf-cache
+    deploy:
+      replicas: 1
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    runtime: nvidia
+    ipc: host
+    tty: true # enable colorized logs
+    build:
+      context: .
+    command: ['--huggingface_repo_id="metavoiceio/metavoice-1B-v0.1"']
+    ports:
+      - 8069:80
+    networks:
+      - metavoice-net
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_HOME=/.hf-cache
+    logging:
+      options:
+        max-size: "100m"
+        max-file: "10"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://metavoice-server:80/"]
+      interval: 1m
+      timeout: 20m
+      retries: 20

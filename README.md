@@ -11,6 +11,12 @@ We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used wit
 
 Try out [demo](https://ttsdemo.themetavoice.xyz/)!
 
+## Quickstart - TLDR
+
+```bash
+docker-compose up -d && docker-compose ps && docker-compose logs -f
+```
+[API docs](http://localhost:8069/docs)
 ## Installation
 ```bash
 # install ffmpeg
