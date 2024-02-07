@@ -60,7 +60,7 @@ The model supports:
 2. Batching (including texts of different lengths)
 
 ## Contribute
-- See all [active issues](https://github.com/themetavoicexyz/issues)!
+- See all [active issues](https://github.com/metavoiceio/metavoice-src/issues)!
 
 ## Acknowledgements
 We are grateful to Together.ai for their 24/7 help in marshalling our cluster. We thank the teams of AWS, GCP & HuggingFace for support with their cloud platforms.
