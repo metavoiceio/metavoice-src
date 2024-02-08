@@ -82,6 +82,7 @@ class TTSRequest:
 @app.post("/tts", response_class=Response)
 async def text_to_speech(req: Request):
     audiodata = await req.body()
+    print("audiodata := ", audiodata)
     payload = None
     wav_out_path = None
 
@@ -92,6 +93,7 @@ async def text_to_speech(req: Request):
         tts_req = TTSRequest(**payload)
         with tempfile.NamedTemporaryFile(suffix=".wav") as wav_tmp:
             if tts_req.speaker_ref_path is None:
+                print("wav_tmp := ", wav_tmp)
                 wav_path = _convert_audiodata_to_wav_path(audiodata, wav_tmp)
             else:
                 wav_path = tts_req.speaker_ref_path
@@ -185,7 +187,7 @@ if __name__ == "__main__":
     # start server
     uvicorn.run(
         app,
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=GlobalState.config.port,
         log_level="info",
     )

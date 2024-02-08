@@ -23,7 +23,7 @@ COPY requirements.txt requirements.txt
 RUN pip install -r requirements.txt
 COPY . .
 RUN pip install -e .
-RUN apt-get remove -y git build-essential && \  
+RUN apt-get remove -y build-essential && \  
     apt-get autoremove -y && \  
     apt-get clean  && \  
     rm -rf /var/lib/apt/lists/*  
