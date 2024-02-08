@@ -612,10 +612,10 @@ class SamplingControllerConfig:
     temperature: float = 1.0
     """Temperature for sampling applied to both models."""
 
-    top_k: Optional[int] = 200
+    top_k: Optional[int] = None
     """Top k for sampling applied to both models."""
 
-    top_p: Optional[float] = None
+    top_p: Optional[float] = 0.95
     """Top p for sampling applied to first-stage model."""
 
     seed: int = 1337
@@ -643,7 +643,7 @@ class SamplingControllerConfig:
     output_dir: str = "samples/"
     """Relative path to output directory"""
 
-    guidance_scale: Optional[float] = None
+    guidance_scale: Optional[float] = 3.0
     """Guidance scale for sampling."""
 
     batch_size: int = 128
