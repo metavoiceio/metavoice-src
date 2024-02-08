@@ -12,6 +12,7 @@ services:
   metavoice-server:
     volumes:
       - hf-cache:/.hf-cache
+      - ./assets:/app/assets
     deploy:
       replicas: 1
       resources:
