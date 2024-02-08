@@ -10,11 +10,7 @@ from einops import rearrange
 from torch.nn import functional as F
 
 from fam.llm.layers import Block, LayerNorm, RMSNorm
-from fam.llm.mixins import (
-    CausalInferenceMixin,
-    GPT2LoadingMixin,
-    NonCausalInferenceMixin,
-)
+from fam.llm.mixins import CausalInferenceMixin, NonCausalInferenceMixin
 
 END_OF_TEXT_TOKEN = 1537
 
@@ -80,7 +76,7 @@ def _check_speaker_emb_dims(
     return speaker_embs
 
 
-class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin, GPT2LoadingMixin):
+class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin):
     def __init__(self, config: GPTConfig, speaker_emb_dim: Optional[int] = None):
         """
         Initialize the GPT model.
