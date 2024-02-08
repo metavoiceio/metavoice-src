@@ -9,7 +9,7 @@ MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for 
 
 We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used without restrictions*.
 
-Try out [demo](https://ttsdemo.themetavoice.xyz/)!
+Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 
 ## Installation
 ```bash
@@ -36,7 +36,7 @@ python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" -
 python fam/llm/serving.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1"
 ```
 
-3. Use it on HuggingFace
+3. Use it via [HuggingFace](https://huggingface.co/metavoiceio)
 
 ## Soon
 - Long form TTS
