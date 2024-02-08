@@ -10,6 +10,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import List, Literal, Optional, Type
 
+import librosa
 import torch
 import tqdm
 import tqdm.contrib.concurrent
@@ -401,6 +402,7 @@ def get_cached_file(file_or_uri: str):
     """
     is_uri = file_or_uri.startswith("http")
 
+    cache_path = None
     if is_uri:
         ext = pathlib.Path(file_or_uri).suffix
         # hash the file path to get the cache name
@@ -412,13 +414,17 @@ def get_cached_file(file_or_uri: str):
         if not os.path.exists(cache_path):
             command = f"curl -o {cache_path} {file_or_uri}"
             subprocess.run(command, shell=True, check=True)
-
-        return cache_path
     else:
         if os.path.exists(file_or_uri):
-            return file_or_uri
+            cache_path = file_or_uri
         else:
             raise FileNotFoundError(f"File {file_or_uri} not found!")
+
+    # check audio file is at min. 30s in length
+    audio, sr = librosa.load(cache_path)
+    assert librosa.get_duration(y=audio, sr=sr) >= 30, "Speaker reference audio file needs to be >= 30s in duration."
+
+    return cache_path
 
 
 def get_cached_embedding(local_file_path: str, spkemb_model):
@@ -596,7 +602,7 @@ class SamplingControllerConfig:
     """Absolute path to the model directory."""
 
     spk_cond_path: str
-    """Path to speaker reference file. Supports: wav, flac & mp3"""
+    """Path to speaker reference file. Min. 30s of audio required. Supports both local paths & public URIs. Audio formats: wav, flac & mp3"""
 
     text: str = (
         "This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model by MetaVoice."
@@ -612,10 +618,10 @@ class SamplingControllerConfig:
     temperature: float = 1.0
     """Temperature for sampling applied to both models."""
 
-    top_k: Optional[int] = 200
+    top_k: Optional[int] = None
     """Top k for sampling applied to both models."""
 
-    top_p: Optional[float] = None
+    top_p: Optional[float] = 0.95
     """Top p for sampling applied to first-stage model."""
 
     seed: int = 1337
@@ -643,7 +649,7 @@ class SamplingControllerConfig:
     output_dir: str = "samples/"
     """Relative path to output directory"""
 
-    guidance_scale: Optional[float] = None
+    guidance_scale: Optional[float] = 3.0
     """Guidance scale for sampling."""
 
     batch_size: int = 128
