@@ -2,9 +2,9 @@
 
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
 * **Emotional speech rhythm and tone** in English. No hallucinations.
+* **Zero-shot cloning for American & British voices**, with 30s reference audio.
 * Support for (cross-lingual) **voice cloning with finetuning**.
   * We have had success with as little as 1 minute training data for Indian speakers.
-* **Zero-shot cloning for American & British voices**, with 30s reference audio.
 * Support for **long-form synthesis**.
 
 We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used without restrictions*.
@@ -28,7 +28,7 @@ pip install -e .
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py),
 ```bash
-python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" --spk_cond_path="assets/ava.flac"
+python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" --spk_cond_path="assets/bria.mp3"
 ```
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py)
