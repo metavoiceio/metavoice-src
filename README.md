@@ -13,8 +13,6 @@ Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 
 ## Installation  
 
-## Installation
-
 **Pre-requisites:** Python 3.10, GPU with ≥24GB RAM.
 
 ```bash
