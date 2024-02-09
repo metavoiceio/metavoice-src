@@ -3,7 +3,7 @@
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
 * **Emotional speech rhythm and tone** in English. No hallucinations.
 * **Zero-shot cloning for American & British voices**, with 30s reference audio.
-* Support for (cross-lingual) **voice cloning with finetuning**.
+* Support for **voice cloning with finetuning**.
   * We have had success with as little as 1 minute training data for Indian speakers.
 * Support for **long-form synthesis**.
 
@@ -11,7 +11,25 @@ We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used wit
 
 Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 
+## Installation  
+
 ## Installation
+
+**Pre-requisites:** Python 3.10, GPU with ≥24GB RAM.
+
+```bash
+# Install FFmpeg
+wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
+wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz.md5
+md5sum -c ffmpeg-git-amd64-static.tar.xz.md5
+tar xvf ffmpeg-git-amd64-static.tar.xz
+sudo mv ffmpeg-git-*-static/ffprobe ffmpeg-git-*-static/ffmpeg /usr/local/bin/
+rm -rf ffmpeg-git-*
+
+# Install project dependencies
+pip install -r requirements.txt
+pip install -e .
+
 ```bash
 # install ffmpeg
 wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
