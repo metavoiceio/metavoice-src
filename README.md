@@ -16,19 +16,6 @@ Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 **Pre-requisites:** Python 3.10, GPU with ≥24GB RAM.
 
 ```bash
-# Install FFmpeg
-wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
-wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz.md5
-md5sum -c ffmpeg-git-amd64-static.tar.xz.md5
-tar xvf ffmpeg-git-amd64-static.tar.xz
-sudo mv ffmpeg-git-*-static/ffprobe ffmpeg-git-*-static/ffmpeg /usr/local/bin/
-rm -rf ffmpeg-git-*
-
-# Install project dependencies
-pip install -r requirements.txt
-pip install -e .
-
-```bash
 # install ffmpeg
 wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
 wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz.md5
