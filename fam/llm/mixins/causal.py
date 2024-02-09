@@ -254,8 +254,7 @@ class CausalInferenceMixin:
 
             # Check if the generated token is the EOT token
             if torch.any(idx_next == eot_id):
-                print("EOT token encountered, stopping generation.")
-                break  # Break the loop if EOT token is generated
+                break
 
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=2)
