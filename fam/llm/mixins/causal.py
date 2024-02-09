@@ -5,6 +5,8 @@ import torch
 import tqdm
 from torch.nn import functional as F
 
+eot_id = 2048
+
 
 def top_p_sample(prob_dist: torch.Tensor, top_p: float):
     sorted_probs, sorted_indices = torch.sort(prob_dist, descending=True, dim=-1)
@@ -249,6 +251,12 @@ class CausalInferenceMixin:
                 )
 
             idx_next = idx_next.unsqueeze(-1)  # (b, num_hierarchies, T=1) tensor
+
+            # Check if the generated token is the EOT token
+            if torch.any(idx_next == eot_id):
+                print("EOT token encountered, stopping generation.")
+                break  # Break the loop if EOT token is generated
+
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=2)
 
@@ -380,7 +388,10 @@ class CausalInferenceMixin:
                 speaker_embs=batch_speaker_embs,
                 guidance_scale=guidance_scale,
             )
-            return_idx[start_index:end_index] = batch_idx
+
+            # assuming batch_idx.shape is (batch_size, num_hierarchies, sequence_length):
+            actual_seq_length = batch_idx.size(2)  # Get the actual sequence length from batch_idx
+            return_idx[start_index:end_index, :, :actual_seq_length] = batch_idx
 
         return return_idx[invert_sorted_indices]
 
