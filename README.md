@@ -1,5 +1,5 @@
 ---
-tags: ["text-to-speech"]
+tags: ["text-to-speech", "metavoice", "english", "pretrained"]
 suggested_hardware: "a10g-small"
 ---
 

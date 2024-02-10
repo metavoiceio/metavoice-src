@@ -43,14 +43,10 @@ class SpeakerEncoder(nn.Module):
         self.device = device
 
         start = timer()
-        if eval and weights_fpath is None:
-            weights_fpath = DEFAULT_SPKENC_CKPT_PATH
 
-        if weights_fpath is not None:
-            checkpoint = torch.load(weights_fpath, map_location="cpu")
-
-            self.load_state_dict(checkpoint["model_state"], strict=False)
-            self.to(device)
+        checkpoint = torch.load(weights_fpath, map_location="cpu")
+        self.load_state_dict(checkpoint["model_state"], strict=False)
+        self.to(device)
 
         if eval:
             self.eval()

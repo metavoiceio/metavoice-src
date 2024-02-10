@@ -53,7 +53,11 @@ sampling_config.max_new_tokens *= 2  # deal with max_new_tokens for flattened in
 
 # define models
 smodel, llm_first_stage, llm_second_stage = build_models(
-    config_first_stage, config_second_stage, sampling_config.device, sampling_config.use_kv_cache
+    config_first_stage,
+    config_second_stage,
+    model_dir=model_dir,
+    device=sampling_config.device,
+    use_kv_cache=sampling_config.use_kv_cache,
 )
 
 #### setup interface
