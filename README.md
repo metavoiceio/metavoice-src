@@ -13,7 +13,7 @@ Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 
 ## Installation  
 
-**Pre-requisites:** Python 3.10, GPU with ≥24GB RAM.
+**Pre-requisites:** Python >=3.10,<3.12; GPU with >=24GB RAM.
 
 ```bash
 # install ffmpeg
