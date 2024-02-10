@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Type
+from typing import List, Literal, Optional, Type, Union
 
 import librosa
 import torch
@@ -452,7 +452,7 @@ def _sample_utterance_batch(
     spkemb_model,
     first_stage_model,
     second_stage_model,
-    enhancer: Optional[Literal["df"] | BaseEnhancer],
+    enhancer: Optional[Union[Literal["df"], BaseEnhancer]],
     first_stage_ckpt_path: str,
     second_stage_ckpt_path: str,
     guidance_scale: Optional[float],
@@ -530,7 +530,7 @@ def sample_utterance(
     spkemb_model,
     first_stage_model,
     second_stage_model,
-    enhancer: Optional[Literal["df"] | BaseEnhancer],
+    enhancer: Optional[Union[Literal["df"], BaseEnhancer]],
     first_stage_ckpt_path: str,
     second_stage_ckpt_path: str,
     guidance_scale: Optional[float],
