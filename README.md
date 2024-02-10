@@ -16,6 +16,7 @@ Try out [demo](https://ttsdemo.themetavoice.xyz/)!
 ```bash
 docker-compose up -d && docker-compose ps && docker-compose logs -f
 ```
+
 Explore exposed [API](http://localhost:8869/docs)!
 ## Installation
 ```bash
