@@ -1,6 +1,6 @@
 .vscode
 *.pkl
-# *.flac
+*.flac
 *.npz
 *.wav
 *.m4a
