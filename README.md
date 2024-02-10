@@ -11,7 +11,10 @@ We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used wit
 
 Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 
-## Installation
+## Installation  
+
+**Pre-requisites:** Python >=3.10,<3.12; GPU with >=24GB RAM.
+
 ```bash
 # install ffmpeg
 wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz

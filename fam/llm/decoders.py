@@ -2,7 +2,7 @@ import os
 import pathlib
 import uuid
 from abc import ABC, abstractmethod
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 import julius
 import torch
@@ -63,7 +63,7 @@ class EncodecDecoder(Decoder):
 
     def decode(
         self, tokens: list[list[int]], causal: bool = True, ref_audio_path: Optional[str] = None
-    ) -> str | torch.Tensor:
+    ) -> Union[str, torch.Tensor]:
         # TODO: this has strange behaviour -- if causal is True, it returns tokens. if causal is False, it SAVES the audio file.
         text_ids, extracted_audio_ids = self._data_adapter_fn(tokens)
         text = self.tokeniser_decode_fn(text_ids)
