@@ -1,4 +1,9 @@
+import os
 import re
+import tempfile
+import subprocess
+
+import librosa
 
 
 def normalize_text(text: str) -> str:
@@ -45,3 +50,25 @@ def normalize_text(text: str) -> str:
     text = text.strip()
     text = re.sub("\s\s+", " ", text)  # remove multiple spaces
     return text
+
+
+def check_audio_file(path_or_uri, threshold_s=30):
+    if "http" in path_or_uri:
+        temp_fd, filepath = tempfile.mkstemp()
+        os.close(temp_fd)  # Close the file descriptor, curl will create a new connection
+        curl_command = ["curl", "-L", path_or_uri, "-o", filepath]
+        subprocess.run(curl_command, check=True)
+
+    else:
+        filepath = path_or_uri
+
+    audio, sr = librosa.load(filepath)
+    duration_s = librosa.get_duration(y=audio, sr=sr)
+    if duration_s < threshold_s:
+        raise Exception(
+            f"The audio file is too short. Please provide an audio file that is at least {threshold_s} seconds long to proceed."
+        )
+
+    # Clean up the temporary file if it was created
+    if "http" in path_or_uri:
+        os.remove(filepath)

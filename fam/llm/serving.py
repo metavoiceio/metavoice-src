@@ -24,6 +24,7 @@ from fam.llm.sample import (
     get_second_stage_path,
     sample_utterance,
 )
+from fam.llm.utils import check_audio_file
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ async def text_to_speech(req: Request):
         with tempfile.NamedTemporaryFile(suffix=".wav") as wav_tmp:
             if tts_req.speaker_ref_path is None:
                 wav_path = _convert_audiodata_to_wav_path(audiodata, wav_tmp)
+                check_audio_file(wav_path)
             else:
                 wav_path = tts_req.speaker_ref_path
             wav_out_path = sample_utterance(

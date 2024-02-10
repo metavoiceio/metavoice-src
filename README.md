@@ -1,3 +1,8 @@
+---
+tags: ["text-to-speech"]
+suggested_hardware: "a10g-small"
+---
+
 # MetaVoice-1B
 
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:

@@ -12,6 +12,5 @@ uvicorn
 tyro
 deepfilternet
 pydub
-soundfile
 gradio
 huggingface_hub
