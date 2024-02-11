@@ -13,6 +13,8 @@ Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 
 ## Installation  
 
+Only Linux installation is supported at this time. (Requires [flash attention](https://github.com/Dao-AILab/flash-attention), which currently does not support Windows or Mac.)
+
 **Pre-requisites:** Python >=3.10,<3.12; GPU with >=24GB RAM.
 
 ```bash
