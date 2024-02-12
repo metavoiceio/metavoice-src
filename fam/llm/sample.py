@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Type, Union
+from typing import List, Literal, Optional, Tuple, Type, Union
 
 import librosa
 import torch
@@ -47,10 +47,6 @@ class InferenceConfig:
 
 
 class Model:
-    """
-    Class to sample from a trained model.
-    """
-
     def __init__(
         self,
         config: InferenceConfig,
@@ -71,14 +67,14 @@ class Model:
         torch.backends.cuda.matmul.allow_tf32 = True if config.dtype != "float32" else False  # allow tf32 on matmul
         torch.backends.cudnn.allow_tf32 = True if config.dtype != "float32" else False  # allow tf32 on cudnn
         device_type = "cuda" if "cuda" in config.device else "cpu"  # for later use in torch.autocast
-        ptdtype = {
+        self.ptdtype = {
             "float32": torch.float32,
             "tfloat32": torch.float32,
             "bfloat16": torch.bfloat16,
             "float16": torch.float16,
         }[config.dtype]
         self._ctx = (
-            nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+            nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=self.ptdtype)
         )
 
         self.use_bpe_tokenizer = False
@@ -156,10 +152,7 @@ class Model:
                     block.attn.attn_kernel_type = "fd"
             elif self.use_kv_cache == "vanilla":
                 for block in self.model.transformer.h:
-                    if block.attn.attn_kernel_type != "fa2":
-                        raise Exception(
-                            f"kv_cache only supported for flash attention 2 but found {block.attn.attn_kernel_type} inside model!"
-                        )
+                    block.attn.attn_kernel_type = "torch_attn"
                 self.model.enable_kv_cache()
             else:
                 raise NotImplementedError(f"kv_cache type {self.use_kv_cache} not implemented!")
@@ -245,6 +238,9 @@ class Model:
                         speaker_embs=speaker_embs,
                         batch_size=batch_size,
                         guidance_scale=guidance_scale,
+                        dtype=self.ptdtype,
+                        end_of_audio_token=self.tokenizer.offset - 1,
+                        end_of_text_token=self.tokenizer.eot_token,
                     )
                     for i in range(len(y)):
                         to_return.append(self.decoder.decode(tokens=y[i].tolist(), causal=True))
@@ -455,7 +451,7 @@ def _sample_utterance_batch(
     enhancer: Optional[Union[Literal["df"], BaseEnhancer]],
     first_stage_ckpt_path: str,
     second_stage_ckpt_path: str,
-    guidance_scale: Optional[float],
+    guidance_scale: Optional[Tuple[float, float]],
     max_new_tokens: int,
     top_k: Optional[int],
     top_p: Optional[float],
@@ -533,7 +529,7 @@ def sample_utterance(
     enhancer: Optional[Union[Literal["df"], BaseEnhancer]],
     first_stage_ckpt_path: str,
     second_stage_ckpt_path: str,
-    guidance_scale: Optional[float],
+    guidance_scale: Optional[Tuple[float, float]],
     max_new_tokens: int,
     top_k: Optional[int],
     top_p: Optional[float],
@@ -649,8 +645,8 @@ class SamplingControllerConfig:
     output_dir: str = "samples/"
     """Relative path to output directory"""
 
-    guidance_scale: Optional[float] = 3.0
-    """Guidance scale for sampling."""
+    guidance_scale: Optional[Tuple[float, float]] = (3.0, 1.0)
+    """Guidance scale for sampling: (speaker conditioning guidance_scale, prompt conditioning guidance scale)."""
 
     batch_size: int = 128
     """Batch size to use for sampling. Note that the batch size gets doubled when guidance is used. For H100, and 1B model, 
