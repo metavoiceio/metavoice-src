@@ -99,7 +99,7 @@ async def text_to_speech(req: Request):
             if wav_path is None:
                 warnings.warn("Running without speaker reference")
                 assert tts_req.guidance is None
-            wav_out_path = _sample_utterance(
+            wav_out_path = sample_utterance(
                 tts_req.text,
                 wav_path,
                 GlobalState.spkemb_model,
