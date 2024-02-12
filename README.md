@@ -25,6 +25,10 @@ sudo mv ffmpeg-git-*-static/ffprobe ffmpeg-git-*-static/ffmpeg /usr/local/bin/
 rm -rf ffmpeg-git-*
 
 pip install -r requirements.txt
+
+# Works only on lasest NVidia GPUs. If you have a different GPU, do not install this.
+pip install flash-attn
+
 pip install -e .
 ```
 

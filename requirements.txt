@@ -6,7 +6,6 @@ tiktoken==0.5.1
 audiocraft
 numpy
 ninja
-flash-attn
 fastapi
 uvicorn
 tyro
