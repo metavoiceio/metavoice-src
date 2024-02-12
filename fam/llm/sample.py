@@ -118,9 +118,6 @@ class Model:
                 speaker_emb_size = self.meta["speaker_emb_size"]
 
             model_args = checkpoint["model_args"]
-            if self._force_model_args is not None:
-                model_args.update(self._force_model_args)
-
             if "causal" in self.checkpoint_config and self.checkpoint_config["causal"] is False:
                 self._encodec_ctx_window = model_args["block_size"]
 
