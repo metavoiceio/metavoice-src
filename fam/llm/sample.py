@@ -561,8 +561,10 @@ def sample_utterance(
     )[0]
 
 
-def build_models(config_first_stage, config_second_stage, device, use_kv_cache):
-    smodel = SpeakerEncoder(device=device, eval=True, verbose=False)
+def build_models(config_first_stage, config_second_stage, model_dir, device, use_kv_cache):
+    smodel = SpeakerEncoder(
+        weights_fpath=os.path.join(model_dir, "speaker_encoder.pt"), device=device, eval=True, verbose=False
+    )
     data_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=1024)
     llm_first_stage = Model(
         config_first_stage,
@@ -690,7 +692,11 @@ if __name__ == "__main__":
 
     # define models
     smodel, llm_first_stage, llm_second_stage = build_models(
-        config_first_stage, config_second_stage, sampling_config.device, sampling_config.use_kv_cache
+        config_first_stage,
+        config_second_stage,
+        model_dir=model_dir,
+        device=sampling_config.device,
+        use_kv_cache=sampling_config.use_kv_cache
     )
 
     print(f"Synthesising utterance...")
