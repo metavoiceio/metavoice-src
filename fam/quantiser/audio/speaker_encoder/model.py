@@ -9,8 +9,6 @@ from torch import nn
 
 from fam.quantiser.audio.speaker_encoder import audio
 
-DEFAULT_SPKENC_CKPT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ckpt/ckpt.pt")
-
 mel_window_step = 10
 mel_n_channels = 40
 sampling_rate = 16000
@@ -43,14 +41,10 @@ class SpeakerEncoder(nn.Module):
         self.device = device
 
         start = timer()
-        if eval and weights_fpath is None:
-            weights_fpath = DEFAULT_SPKENC_CKPT_PATH
 
-        if weights_fpath is not None:
-            checkpoint = torch.load(weights_fpath, map_location="cpu")
-
-            self.load_state_dict(checkpoint["model_state"], strict=False)
-            self.to(device)
+        checkpoint = torch.load(weights_fpath, map_location="cpu")
+        self.load_state_dict(checkpoint["model_state"], strict=False)
+        self.to(device)
 
         if eval:
             self.eval()
