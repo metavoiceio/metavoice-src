@@ -56,6 +56,9 @@ class ServingConfig:
     enhancer: Optional[Literal["df"]] = "df"
     """Enhancer to use for post-processing."""
 
+    compile: bool = False
+    """Whether to compile the model using PyTorch 2.0."""
+
     port: int = 58003
 
 
