@@ -17,7 +17,7 @@ class LayerNorm(nn.Module):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
 
-class RMSNorm(torch.nn.Module):
+class RMSNorm(nn.Module):
     def __init__(self, ndim: int, eps: float):
         super().__init__()
         self.eps = eps
