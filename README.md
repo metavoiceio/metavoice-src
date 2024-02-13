@@ -11,6 +11,12 @@ We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used wit
 
 Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 
+Update : Colab Notebook. <a target="_blank" href="https://colab.research.google.com/drive/1wydi9YWQe48HFPoVtP1ugfoxgLep_lIZ?usp=sharing">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a>
+
+Note : I was able to successfully run it on a High Ram A100 GPU. Remember to run it with flag ```--dtype=float16```
+
 ## Installation  
 
 **Pre-requisites:** Python >=3.10,<3.12; GPU with >=24GB RAM.
