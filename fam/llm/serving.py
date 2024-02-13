@@ -56,6 +56,9 @@ class ServingConfig:
     enhancer: Optional[Literal["df"]] = "df"
     """Enhancer to use for post-processing."""
 
+    compile: bool = False
+    """Whether to compile the model using PyTorch 2.0."""
+
     port: int = 58003
 
 
@@ -181,7 +184,9 @@ if __name__ == "__main__":
         **common_config,
     )
 
-    spkemb, llm_stg1, llm_stg2 = build_models(config1, config2, device=device, use_kv_cache="flash_decoding")
+    spkemb, llm_stg1, llm_stg2 = build_models(
+        config1, config2, model_dir=model_dir, device=device, use_kv_cache="flash_decoding"
+    )
     GlobalState.spkemb_model = spkemb
     GlobalState.first_stage_model = llm_stg1
     GlobalState.second_stage_model = llm_stg2
