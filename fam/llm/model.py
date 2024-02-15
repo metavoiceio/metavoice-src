@@ -232,7 +232,8 @@ class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin):
         tok_emb = torch.zeros((b, t, self.config.n_embd), device=device)
         # ends up swapping (B, num_hierarchies, t) tokens -> (B, t, c) embeddings.
         for i, wte in enumerate(self.transformer.wtes):
-            tok_emb += wte(idx[:, i, :])
+            idx_long = idx.long()
+            tok_emb += wte(idx_long[:, i, :])
         pos_emb = self.transformer.wpe(pos)  # position embeddings of shape (t, n_embd)
 
         spk_emb = 0.0
