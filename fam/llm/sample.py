@@ -182,7 +182,7 @@ class Model:
         seq_lens = []
         xs = []
         for i, encoded_text in enumerate(encoded_texts):
-            encoded_text = torch.tensor([encoded_text], dtype=self.ptdtype, device=self.device)
+            encoded_text = torch.tensor([encoded_text], dtype=torch.long, device=self.device)
             # TODO: remove magic number
             xs.append(
                 torch.cat(
@@ -197,7 +197,7 @@ class Model:
         assert len(xs) == len(seq_lens)
 
         ## equalise the shapes in the batch. we can use torch.zeros as tokens > seq_lens will be masked out.
-        x = torch.zeros((len(encoded_texts), xs[0].shape[1], max_len), dtype=self.ptdtype, device=self.device)
+        x = torch.zeros((len(encoded_texts), xs[0].shape[1], max_len), dtype=torch.long, device=self.device)
         for i, _xs in enumerate(xs):
             assert _xs.shape[-1] == seq_lens[i]
             x[i, :, : seq_lens[i]] = _xs
@@ -269,7 +269,7 @@ class Model:
         # TODO: same code is used during data prep. refactor
         padded_hierarchies_inputs = []
         for encoded_text, encodec_token in zip(encoded_texts, encodec_tokens):
-            x = torch.tensor(encoded_text, dtype=self.ptdtype, device=self.device)[
+            x = torch.tensor(encoded_text, dtype=torch.long, device=self.device)[
                 None, None, ...
             ]  # (b=1, c=1, t)
 
@@ -305,7 +305,7 @@ class Model:
             padded_hierarchies_inputs.append(padded_hierarchies_input)
 
         ## check that the input is correct
-        in_x = torch.tensor(padded_hierarchies_inputs, dtype=self.ptdtype, device=self.device)
+        in_x = torch.tensor(padded_hierarchies_inputs, dtype=torch.long, device=self.device)
         assert in_x.shape[0] == speaker_embs.shape[0] if speaker_embs is not None else True
 
         if self.speaker_cond is False:
