@@ -43,3 +43,29 @@ services:
       interval: 1m
       timeout: 20m
       retries: 20
+  metavoice-ui:
+    cpus: 1.0
+    container_name: metavoice-ui
+    volumes:
+      - hf-cache:/.hf-cache
+      - ./assets:/app/assets
+    image: metavoice-server:latest
+    depends_on:
+      - metavoice-server
+    entrypoint: ["python", "fam/ui/app.py"]
+    ports:
+      - 7860:7860
+    networks:
+      - metavoice-net
+    environment:
+      - HF_HOME=/.hf-cache
+    logging:
+      options:
+        max-size: "100m"
+        max-file: "10"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7861/"]
+      interval: 1m
+      timeout: 20m
+      retries: 20
+    tty: true # enable colorized logs

@@ -4,7 +4,7 @@ RUN apt-get update && \
 
 RUN apt-get update && \  
     # apt-get upgrade -y && \
-    apt-get install -y python3.10 python3-pip git wget && \  
+    apt-get install -y python3.10 python3-pip git wget curl && \  
     apt-get autoremove -y && \  
     apt-get clean
 
@@ -26,8 +26,7 @@ RUN pip install -e .
 RUN apt-get remove -y build-essential && \  
     apt-get autoremove -y && \  
     apt-get clean  && \  
-    rm -rf /var/lib/apt/lists/*  
-
-RUN pip cache purge
+    rm -rf /var/lib/apt/lists/*  && \
+    pip cache purge
 
 ENTRYPOINT [ "python3.10", "fam/llm/serving.py" ]
