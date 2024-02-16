@@ -29,6 +29,8 @@ class EncodecDecoder(Decoder):
         self._num_codebooks = 8
         self.mbd = MultiBandDiffusion.get_mbd_24khz(bw=self._mbd_bandwidth)
 
+        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+
         self.tokeniser_decode_fn = tokeniser_decode_fn
         self._data_adapter_fn = data_adapter_fn
 
@@ -50,13 +52,12 @@ class EncodecDecoder(Decoder):
         limited codebook reconstruction or sampling from second stage model only).
         """
         pass
-        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         wav, sr = audio_read(audio_path)
         if sr != self._mbd_sample_rate:
             wav = julius.resample_frac(wav, sr, self._mbd_sample_rate)
         if wav.ndim == 2:
             wav = wav.unsqueeze(1)
-        wav = wav.to(device)
+        wav = wav.to(self.device)
         tokens = self.mbd.codec_model.encode(wav)
         tokens = tokens[0][0]
 
@@ -65,13 +66,12 @@ class EncodecDecoder(Decoder):
     def decode(
         self, tokens: list[list[int]], causal: bool = True, ref_audio_path: Optional[str] = None
     ) -> Union[str, torch.Tensor]:
-        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
         # TODO: this has strange behaviour -- if causal is True, it returns tokens. if causal is False, it SAVES the audio file.
         text_ids, extracted_audio_ids = self._data_adapter_fn(tokens)
         text = self.tokeniser_decode_fn(text_ids)
         print(f"Text: {text}")
 
-        tokens = torch.tensor(extracted_audio_ids, device=device).unsqueeze(0)
+        tokens = torch.tensor(extracted_audio_ids, device=self.device).unsqueeze(0)
 
         if tokens.shape[1] < self._num_codebooks:
             tokens = torch.cat(
@@ -81,7 +81,7 @@ class EncodecDecoder(Decoder):
         if causal:
             return tokens
         else:
-            with torch.amp.autocast(device_type=device, dtype=torch.float32):
+            with torch.amp.autocast(device_type="cpu" if self.device != "cuda" else self.device, dtype=torch.bfloat16 if self.device != "cuda" else torch.float32):
                 wav = self.mbd.tokens_to_wav(tokens)
             # NOTE: we couldn't just return wav here as it goes through loudness compression etc :)
 
