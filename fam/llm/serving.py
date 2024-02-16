@@ -5,11 +5,14 @@ import subprocess
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional, Tuple, Union
 
 import fastapi
 import fastapi.middleware.cors
 import torch
+import torchaudio
+from torchaudio.transforms import Resample
+
 import tyro
 import uvicorn
 from attr import dataclass
@@ -28,41 +31,20 @@ from fam.llm.sample import (
 
 logger = logging.getLogger(__name__)
 
-
-## Setup FastAPI server.
 app = fastapi.FastAPI()
-
 
 @dataclass
 class ServingConfig:
     huggingface_repo_id: str
-    """Absolute path to the model directory."""
-
     max_new_tokens: int = 864 * 2
-    """Maximum number of new tokens to generate from the first stage model."""
-
     temperature: float = 1.0
-    """Temperature for sampling applied to both models."""
-
     top_k: int = 200
-    """Top k for sampling applied to both models."""
-
     seed: int = 1337
-    """Random seed for sampling."""
-
     dtype: Literal["bfloat16", "float16", "float32", "tfloat32"] = "bfloat16"
-    """Data type to use for sampling."""
-
     enhancer: Optional[Literal["df"]] = "df"
-    """Enhancer to use for post-processing."""
-
     compile: bool = False
-    """Whether to compile the model using PyTorch 2.0."""
-
     port: int = 58003
 
-
-# Singleton
 class _GlobalState:
     spkemb_model: torch.nn.Module
     first_stage_model: Model
@@ -70,18 +52,15 @@ class _GlobalState:
     config: ServingConfig
     enhancer: object
 
-
 GlobalState = _GlobalState()
-
 
 @dataclass(frozen=True)
 class TTSRequest:
     text: str
-    guidance: Optional[Tuple[float, float]] = (3.0, 1.0)
+    guidance: Optional[Union[float, Tuple[float, float]]] = (3.0, 1.0)
     top_p: Optional[float] = 0.95
     speaker_ref_path: Optional[str] = None
     top_k: Optional[int] = None
-
 
 @app.post("/tts", response_class=Response)
 async def text_to_speech(req: Request):
@@ -94,6 +73,14 @@ async def text_to_speech(req: Request):
         payload = headers["X-Payload"]
         payload = json.loads(payload)
         tts_req = TTSRequest(**payload)
+
+        if isinstance(tts_req.guidance, tuple):
+            first_guidance, second_guidance = tts_req.guidance
+        elif isinstance(tts_req.guidance, (float, int)):
+            first_guidance = second_guidance = tts_req.guidance
+        else:
+            first_guidance = second_guidance = None
+
         with tempfile.NamedTemporaryFile(suffix=".wav") as wav_tmp:
             if tts_req.speaker_ref_path is None:
                 wav_path = _convert_audiodata_to_wav_path(audiodata, wav_tmp)
@@ -111,7 +98,7 @@ async def text_to_speech(req: Request):
                 enhancer=GlobalState.enhancer,
                 first_stage_ckpt_path=None,
                 second_stage_ckpt_path=None,
-                guidance_scale=tts_req.guidance,
+                guidance_scale=(first_guidance, second_guidance),
                 max_new_tokens=GlobalState.config.max_new_tokens,
                 temperature=GlobalState.config.temperature,
                 top_k=tts_req.top_k,
@@ -120,7 +107,6 @@ async def text_to_speech(req: Request):
         with open(wav_out_path, "rb") as f:
             return Response(content=f.read(), media_type="audio/wav")
     except Exception as e:
-        # traceback_str = "".join(traceback.format_tb(e.__traceback__))
         logger.exception(f"Error processing request {payload}")
         return Response(
             content="Something went wrong. Please try again in a few mins or contact us on Discord",
@@ -130,23 +116,24 @@ async def text_to_speech(req: Request):
         if wav_out_path is not None:
             Path(wav_out_path).unlink(missing_ok=True)
 
-
-def _convert_audiodata_to_wav_path(audiodata, wav_tmp):
-    with tempfile.NamedTemporaryFile() as unknown_format_tmp:
+def _convert_audiodata_to_wav_path(audiodata, wav_tmp_path):
+    with tempfile.NamedTemporaryFile(delete=False) as unknown_format_tmp:
         if unknown_format_tmp.write(audiodata) == 0:
             return None
         unknown_format_tmp.flush()
+        unknown_format_tmp.close()  # Explicitly close the file
+
+        output_path = tempfile.mktemp(suffix=".wav")  # Generate a path for the output file
 
         subprocess.check_output(
-            # arbitrary 2 minute cutoff
-            shlex.split(f"ffmpeg -t 120 -y -i {unknown_format_tmp.name} -f wav {wav_tmp.name}")
+            shlex.split(f'ffmpeg -t 120 -y -i "{unknown_format_tmp.name}" -f wav "{output_path}"')
         )
 
-        return wav_tmp.name
+        return output_path
+
 
 
 if __name__ == "__main__":
-    # This has to be here to avoid some weird audiocraft shenaningans messing up matplotlib
     from fam.llm.enhancers import get_enhancer
 
     for name in logging.root.manager.loggerDict:
@@ -192,7 +179,6 @@ if __name__ == "__main__":
     GlobalState.second_stage_model = llm_stg2
     GlobalState.enhancer = get_enhancer(GlobalState.config.enhancer)
 
-    # start server
     uvicorn.run(
         app,
         host="127.0.0.1",
