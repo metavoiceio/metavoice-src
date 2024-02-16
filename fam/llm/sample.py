@@ -25,7 +25,12 @@ from fam.llm.utils import normalize_text
 from fam.quantiser.audio.speaker_encoder.model import SpeakerEncoder
 from fam.quantiser.text.tokenise import TrainedBPETokeniser
 
-
+import time
+import logging
+import traceback
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 @dataclass
 class InferenceConfig:
     ckpt_path: str  # path to checkpoint
@@ -458,21 +463,25 @@ def _sample_utterance_batch(
     temperature: Optional[float],
     batch_size: int = 128,
 ) -> List[str]:
+    logger.info("Starting _sample_utterance_batch")
 
     speaker_embs = []
     refs = spk_cond_paths.copy()
 
-    # multithreaded loop to cache all the files
+    # Multithreaded loop to cache all the files
+    logger.info("Caching speaker reference files")
     spk_cond_paths = tqdm.contrib.concurrent.thread_map(
         get_cached_file, spk_cond_paths, desc="getting cached speaker ref files"
     )
 
+    logger.info("Calculating speaker embeddings")
     for i, (text, spk_cond_path) in tqdm.tqdm(
         enumerate(zip(texts, spk_cond_paths)), total=len(texts), desc="calculating speaker embeddings"
     ):
         texts[i] = normalize_text(text)
         speaker_embs.append(get_cached_embedding(spk_cond_path, spkemb_model) if spk_cond_path else None)
 
+    logger.info("Processing with first stage model")
     b_speaker_embs = torch.cat(speaker_embs, dim=0)
     b_tokens = first_stage_model(
         texts=texts,
@@ -485,7 +494,7 @@ def _sample_utterance_batch(
         max_new_tokens=max_new_tokens,
     )
 
-    # TODO: set batch size for second stage model!
+    logger.info("Processing with second stage model")
     wav_files = second_stage_model(
         texts=texts,
         encodec_tokens=b_tokens,
@@ -498,18 +507,24 @@ def _sample_utterance_batch(
         max_new_tokens=None,
     )
 
+    logger.info("Post-processing generated WAV files")
     for text, tokens, speaker_embs, ref_name, wav_file in zip(texts, b_tokens, b_speaker_embs, refs, wav_files):
         if wav_file is None:
             continue
 
-        with tempfile.NamedTemporaryFile(suffix=".wav") as enhanced_tmp:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as enhanced_tmp:
             if enhancer is not None:
+                logger.info(f"Enhancing audio for {wav_file}")
                 enhancer = get_enhancer(enhancer) if isinstance(enhancer, str) else enhancer
                 enhancer(str(wav_file) + ".wav", enhanced_tmp.name)
-                # copy enhanced_tmp.name back to wav_file
-                print(f"copying enhanced file from {enhanced_tmp.name} to {str(wav_file) + '.wav'}.")
-                shutil.copy2(enhanced_tmp.name, str(wav_file) + ".wav")
 
+                logger.info(f"Copying enhanced file from {enhanced_tmp.name} to {str(wav_file) + '.wav'}")
+                src = os.path.abspath(enhanced_tmp.name)
+                dst = os.path.abspath(str(wav_file) + ".wav")
+                time.sleep(1)  # Sleep for 1 second to ensure file is released
+                shutil.copy2(src, dst)
+
+            logger.info(f"Saving result metadata for {wav_file}")
             save_result_metadata(
                 wav_file,
                 ref_name,
@@ -517,6 +532,8 @@ def _sample_utterance_batch(
                 first_stage_ckpt_path,
                 second_stage_ckpt_path,
             )
+
+    logger.info("Finished _sample_utterance_batch")
     return [str(w) + ".wav" if not str(w).endswith(".wav") else str(w) for w in wav_files]
 
 
