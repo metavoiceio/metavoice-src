@@ -16,7 +16,8 @@ RUN wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz 
     mv ffmpeg-git-*-static/ffprobe ffmpeg-git-*-static/ffmpeg /usr/local/bin/ &&\
     rm -rf ffmpeg-git-*
 
-RUN pip install torch packaging wheel
+RUN pip install torch packaging wheel &&\
+    pip install flash-attn
 WORKDIR /app
 COPY requirements.txt requirements.txt
 # install python packages
