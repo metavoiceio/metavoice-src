@@ -86,7 +86,7 @@ class CausalInferenceMixin:
             idx_cond, speaker_embs=speaker_embs
         )  # list with len num_hierarchies of (b,1,vocab_size) tensors
 
-        if guidance_scale is not None:
+        if guidance_scale is not None and isinstance(guidance_scale, tuple):
             spkemb_guidance_scale, prompt_guidance_scale = guidance_scale
             assert spkemb_guidance_scale >= 1
             assert prompt_guidance_scale >= 1
@@ -221,7 +221,7 @@ class CausalInferenceMixin:
         idx_out[:, :, :min_seq_lens] = idx
         terminated = idx.new_zeros(idx.shape[0], dtype=torch.bool)
 
-        if guidance_scale is not None:
+        if guidance_scale is not None and isinstance(guidance_scale, tuple):
             _, prompt_guidance_scale = guidance_scale
             if speaker_embs is None:
                 raise Exception("Guidance is only supported for conditional models")
@@ -242,7 +242,7 @@ class CausalInferenceMixin:
             else:
                 idx_input = idx_out[:, :, :timestep]
 
-            if guidance_scale is not None:
+            if guidance_scale is not None and isinstance(guidance_scale, tuple):
                 _, prompt_guidance_scale = guidance_scale
                 # TODO: fix: will cause a problem with kv-caching as it's not expecting larger batch-size.
                 if timestep == min_seq_lens:
@@ -388,7 +388,7 @@ class CausalInferenceMixin:
             end_index = min(start_index + batch_size, len(seq_lens))
 
             kv_batch_size = end_index - start_index
-            if guidance_scale is not None:
+            if guidance_scale is not None and isinstance(guidance_scale, tuple):
                 if guidance_scale[1] > 1:
                     kv_batch_size = 3 * kv_batch_size
                 else:
@@ -514,7 +514,7 @@ class CausalInferenceMixin:
             # forward the model to get the logits for the index in the sequence
             list_logits, _ = self(idx_cond, speaker_embs=speaker_embs)
 
-            if guidance_scale is not None:
+            if guidance_scale is not None and isinstance(guidance_scale, tuple):
                 # we've already checked that kv-caching is not switched on
                 # so this should be ok.
                 list_logits_uncond, _ = self(idx_cond, speaker_embs=None)
