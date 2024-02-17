@@ -185,7 +185,7 @@ if __name__ == "__main__":
     )
 
     spkemb, llm_stg1, llm_stg2 = build_models(
-        config1, config2, model_dir=model_dir, device=device, use_kv_cache="flash_decoding"
+        config1, config2, model_dir=model_dir, device=device, use_kv_cache="vanilla" if device != "cuda" else "flash_decoding"
     )
     GlobalState.spkemb_model = spkemb
     GlobalState.first_stage_model = llm_stg1
