@@ -59,7 +59,7 @@ class CausalInferenceMixin:
         temperature: float,
         top_k: Optional[int],
         top_p: Optional[float],
-        guidance_scale: Optional[float],
+        guidance_scale: Optional[Tuple[float, float]],
     ) -> torch.Tensor:
         """
         Predict the next token in the sequence.
@@ -87,14 +87,22 @@ class CausalInferenceMixin:
         )  # list with len num_hierarchies of (b,1,vocab_size) tensors
 
         if guidance_scale is not None:
-            assert idx_cond.shape[0] % 2 == 0
-            assert list_logits[0].shape[0] % 2 == 0
+            spkemb_guidance_scale, prompt_guidance_scale = guidance_scale
+            assert spkemb_guidance_scale >= 1
+            assert prompt_guidance_scale >= 1
+            base_scale = spkemb_guidance_scale + prompt_guidance_scale - 1
 
             for i, logits in enumerate(list_logits):
-                logits_cond, logits_uncond = logits.split(logits.shape[0] // 2, dim=0)
-                list_logits[i] = (guidance_scale) * logits_cond + (1 - guidance_scale) * logits_uncond
-
-            assert list_logits[0].shape[0] == idx_cond.shape[0] // 2
+                if prompt_guidance_scale > 1:
+                    logits_cond, logits_uncond_spkemb, logits_uncond_prompt = logits.split(logits.shape[0] // 3, dim=0)
+                else:
+                    logits_cond, logits_uncond_spkemb = logits.split(logits.shape[0] // 2, dim=0)
+                    logits_uncond_prompt = 0
+                list_logits[i] = (
+                    (base_scale) * logits_cond
+                    + (1 - spkemb_guidance_scale) * logits_uncond_spkemb
+                    + (1 - prompt_guidance_scale) * logits_uncond_prompt
+                )
 
         # pluck the logits at the final step and scale by desired temperature
         list_logits = [
@@ -178,7 +186,9 @@ class CausalInferenceMixin:
         top_k: Optional[int],
         top_p: Optional[float],
         speaker_embs: Optional[torch.Tensor],
-        guidance_scale: Optional[float],
+        guidance_scale: Optional[Tuple[float, float]],
+        end_of_audio_token: int,
+        end_of_text_token: int,
     ):
         """
         Samples a batch of tokens from the model.
@@ -202,33 +212,54 @@ class CausalInferenceMixin:
 
         min_seq_lens = min(seq_lens)
         idx = idx[:, :, :min_seq_lens]
+        idx_out = torch.full(
+            (idx.shape[0], idx.shape[1], idx.shape[2] + max_new_tokens),
+            end_of_audio_token,
+            dtype=idx.dtype,
+            device=idx.device,
+        )
+        idx_out[:, :, :min_seq_lens] = idx
+        terminated = idx.new_zeros(idx.shape[0], dtype=torch.bool)
 
         if guidance_scale is not None:
+            _, prompt_guidance_scale = guidance_scale
             if speaker_embs is None:
                 raise Exception("Guidance is only supported for conditional models")
 
             # create speaker embeddings equivalent to the batch size, filling with None
             # for second half to do unconditional generation.
-            speaker_embs = list(speaker_embs) + [None] * (speaker_embs.shape[0])
+            speaker_embs = (
+                list(speaker_embs)
+                + [None] * (speaker_embs.shape[0])
+                + (list(speaker_embs) if prompt_guidance_scale > 1 else [])
+            )
 
         for timestep in tqdm.tqdm(range(min_seq_lens, min_seq_lens + max_new_tokens), desc="tokens: "):
+            if terminated.all():
+                break
             if (self.kv_cache_enabled is True) and (timestep > min_seq_lens):
-                idx_input = idx[:, :, -1:]
+                idx_input = idx_out[:, :, [timestep - 1]]
             else:
-                idx_input = idx
+                idx_input = idx_out[:, :, :timestep]
 
             if guidance_scale is not None:
+                _, prompt_guidance_scale = guidance_scale
                 # TODO: fix: will cause a problem with kv-caching as it's not expecting larger batch-size.
                 if timestep == min_seq_lens:
-                    print("[hack!!!!] Guidance is on, so we're doubling batch size!")
+                    print("[hack!!!!] Guidance is on, so we're doubling/tripling batch size!")
 
                 # replicate idx in the batch dimension
                 idx_input = (
-                    idx_input.unsqueeze(0).repeat(2, 1, 1, 1).reshape(-1, idx_input.shape[1], idx_input.shape[2])
+                    idx_input.unsqueeze(0)
+                    .repeat(3 if prompt_guidance_scale > 1 else 2, 1, 1, 1)
+                    .reshape(-1, idx_input.shape[1], idx_input.shape[2])
                 )
 
-                # sanity checks
-                assert idx_input.shape[0] % 2 == 0
+                if prompt_guidance_scale > 1:
+                    idx_input_uncond = idx_input[idx_input.shape[0] // 3 * 2 :]
+                    idx_input_uncond = idx_input_uncond.view(-1)
+                    # Replace all text tokens with endoftext token
+                    idx_input_uncond[idx_input_uncond > end_of_audio_token] = end_of_text_token
 
             idx_next = self._sample_next_token(
                 idx=idx_input,
@@ -247,12 +278,13 @@ class CausalInferenceMixin:
                     orig_input_at_t=input[:, :, timestep],
                     token_pred_mask_at_t=token_pred_mask[:, [timestep]],
                 )
-
-            idx_next = idx_next.unsqueeze(-1)  # (b, num_hierarchies, T=1) tensor
+            is_endofaudio = (idx_next == end_of_audio_token).any(dim=-1)  # shape: b
+            terminated = terminated | is_endofaudio
+            idx_next[terminated] = end_of_audio_token
             # append sampled index to the running sequence and continue
-            idx = torch.cat((idx, idx_next), dim=2)
+            idx_out[:, :, timestep] = idx_next
 
-        return idx
+        return idx_out
 
     @torch.no_grad()
     def _sort_for_batching(
@@ -317,7 +349,10 @@ class CausalInferenceMixin:
         top_p: Optional[float],
         speaker_embs: Optional[torch.Tensor],
         batch_size: int,
-        guidance_scale: Optional[float] = None,
+        guidance_scale: Optional[Tuple[float, float]] = None,
+        dtype: torch.dtype = torch.bfloat16,
+        end_of_audio_token: int,
+        end_of_text_token: int,
     ) -> torch.Tensor:
         """
         Generates a sequence of tokens using causal sampling.
@@ -354,14 +389,16 @@ class CausalInferenceMixin:
 
             kv_batch_size = end_index - start_index
             if guidance_scale is not None:
-                kv_batch_size = 2 * kv_batch_size
+                if guidance_scale[1] > 1:
+                    kv_batch_size = 3 * kv_batch_size
+                else:
+                    kv_batch_size = 2 * kv_batch_size
 
             if self.kv_cache_enabled:
-                print("!!!! USING KV-CACHING ASSUMED TORCH.BFLOAT16")
                 self.empty_kv_cache(
                     batch_size=kv_batch_size,
                     kv_cache_maxlen=self.config.block_size,
-                    dtype=torch.bfloat16,
+                    dtype=dtype,
                 )
 
             batch_seq_lens = seq_lens[start_index:end_index]
@@ -379,6 +416,8 @@ class CausalInferenceMixin:
                 top_p=top_p,
                 speaker_embs=batch_speaker_embs,
                 guidance_scale=guidance_scale,
+                end_of_audio_token=end_of_audio_token,
+                end_of_text_token=end_of_text_token,
             )
             return_idx[start_index:end_index] = batch_idx
 

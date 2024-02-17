@@ -1,3 +1,9 @@
+[project]
+name = "metavoice"
+version = "0.1.0"
+description = "Foundational model for text to speech"
+requires-python = ">=3.10,<3.12"
+
 [tool.black]
 line-length = 120
 exclude = '''
@@ -12,4 +18,4 @@ exclude = '''
 '''
 
 [tool.isort]
-profile = "black" 
+profile = "black"

@@ -8,8 +8,9 @@ import subprocess
 import tempfile
 from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import List, Literal, Optional, Type
+from typing import List, Literal, Optional, Tuple, Type, Union
 
+import librosa
 import torch
 import tqdm
 import tqdm.contrib.concurrent
@@ -46,10 +47,6 @@ class InferenceConfig:
 
 
 class Model:
-    """
-    Class to sample from a trained model.
-    """
-
     def __init__(
         self,
         config: InferenceConfig,
@@ -70,14 +67,14 @@ class Model:
         torch.backends.cuda.matmul.allow_tf32 = True if config.dtype != "float32" else False  # allow tf32 on matmul
         torch.backends.cudnn.allow_tf32 = True if config.dtype != "float32" else False  # allow tf32 on cudnn
         device_type = "cuda" if "cuda" in config.device else "cpu"  # for later use in torch.autocast
-        ptdtype = {
+        self.ptdtype = {
             "float32": torch.float32,
             "tfloat32": torch.float32,
             "bfloat16": torch.bfloat16,
             "float16": torch.float16,
         }[config.dtype]
         self._ctx = (
-            nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
+            nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=self.ptdtype)
         )
 
         self.use_bpe_tokenizer = False
@@ -155,10 +152,7 @@ class Model:
                     block.attn.attn_kernel_type = "fd"
             elif self.use_kv_cache == "vanilla":
                 for block in self.model.transformer.h:
-                    if block.attn.attn_kernel_type != "fa2":
-                        raise Exception(
-                            f"kv_cache only supported for flash attention 2 but found {block.attn.attn_kernel_type} inside model!"
-                        )
+                    block.attn.attn_kernel_type = "torch_attn"
                 self.model.enable_kv_cache()
             else:
                 raise NotImplementedError(f"kv_cache type {self.use_kv_cache} not implemented!")
@@ -244,6 +238,9 @@ class Model:
                         speaker_embs=speaker_embs,
                         batch_size=batch_size,
                         guidance_scale=guidance_scale,
+                        dtype=self.ptdtype,
+                        end_of_audio_token=self.tokenizer.offset - 1,
+                        end_of_text_token=self.tokenizer.eot_token,
                     )
                     for i in range(len(y)):
                         to_return.append(self.decoder.decode(tokens=y[i].tolist(), causal=True))
@@ -401,6 +398,7 @@ def get_cached_file(file_or_uri: str):
     """
     is_uri = file_or_uri.startswith("http")
 
+    cache_path = None
     if is_uri:
         ext = pathlib.Path(file_or_uri).suffix
         # hash the file path to get the cache name
@@ -412,13 +410,17 @@ def get_cached_file(file_or_uri: str):
         if not os.path.exists(cache_path):
             command = f"curl -o {cache_path} {file_or_uri}"
             subprocess.run(command, shell=True, check=True)
-
-        return cache_path
     else:
         if os.path.exists(file_or_uri):
-            return file_or_uri
+            cache_path = file_or_uri
         else:
             raise FileNotFoundError(f"File {file_or_uri} not found!")
+
+    # check audio file is at min. 30s in length
+    audio, sr = librosa.load(cache_path)
+    assert librosa.get_duration(y=audio, sr=sr) >= 30, "Speaker reference audio file needs to be >= 30s in duration."
+
+    return cache_path
 
 
 def get_cached_embedding(local_file_path: str, spkemb_model):
@@ -446,10 +448,10 @@ def _sample_utterance_batch(
     spkemb_model,
     first_stage_model,
     second_stage_model,
-    enhancer: Optional[Literal["df"] | BaseEnhancer],
+    enhancer: Optional[Union[Literal["df"], BaseEnhancer]],
     first_stage_ckpt_path: str,
     second_stage_ckpt_path: str,
-    guidance_scale: Optional[float],
+    guidance_scale: Optional[Tuple[float, float]],
     max_new_tokens: int,
     top_k: Optional[int],
     top_p: Optional[float],
@@ -524,10 +526,10 @@ def sample_utterance(
     spkemb_model,
     first_stage_model,
     second_stage_model,
-    enhancer: Optional[Literal["df"] | BaseEnhancer],
+    enhancer: Optional[Union[Literal["df"], BaseEnhancer]],
     first_stage_ckpt_path: str,
     second_stage_ckpt_path: str,
-    guidance_scale: Optional[float],
+    guidance_scale: Optional[Tuple[float, float]],
     max_new_tokens: int,
     top_k: Optional[int],
     top_p: Optional[float],
@@ -559,8 +561,10 @@ def sample_utterance(
     )[0]
 
 
-def build_models(config_first_stage, config_second_stage, device, use_kv_cache):
-    smodel = SpeakerEncoder(device=device, eval=True, verbose=False)
+def build_models(config_first_stage, config_second_stage, model_dir, device, use_kv_cache):
+    smodel = SpeakerEncoder(
+        weights_fpath=os.path.join(model_dir, "speaker_encoder.pt"), device=device, eval=True, verbose=False
+    )
     data_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=1024)
     llm_first_stage = Model(
         config_first_stage,
@@ -596,7 +600,7 @@ class SamplingControllerConfig:
     """Absolute path to the model directory."""
 
     spk_cond_path: str
-    """Path to speaker reference file. Supports: wav, flac & mp3"""
+    """Path to speaker reference file. Min. 30s of audio required. Supports both local paths & public URIs. Audio formats: wav, flac & mp3"""
 
     text: str = (
         "This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model by MetaVoice."
@@ -612,10 +616,10 @@ class SamplingControllerConfig:
     temperature: float = 1.0
     """Temperature for sampling applied to both models."""
 
-    top_k: Optional[int] = 200
+    top_k: Optional[int] = None
     """Top k for sampling applied to both models."""
 
-    top_p: Optional[float] = None
+    top_p: Optional[float] = 0.95
     """Top p for sampling applied to first-stage model."""
 
     seed: int = 1337
@@ -643,8 +647,8 @@ class SamplingControllerConfig:
     output_dir: str = "samples/"
     """Relative path to output directory"""
 
-    guidance_scale: Optional[float] = None
-    """Guidance scale for sampling."""
+    guidance_scale: Optional[Tuple[float, float]] = (3.0, 1.0)
+    """Guidance scale for sampling: (speaker conditioning guidance_scale, prompt conditioning guidance scale)."""
 
     batch_size: int = 128
     """Batch size to use for sampling. Note that the batch size gets doubled when guidance is used. For H100, and 1B model, 
@@ -688,7 +692,11 @@ if __name__ == "__main__":
 
     # define models
     smodel, llm_first_stage, llm_second_stage = build_models(
-        config_first_stage, config_second_stage, sampling_config.device, sampling_config.use_kv_cache
+        config_first_stage,
+        config_second_stage,
+        model_dir=model_dir,
+        device=sampling_config.device,
+        use_kv_cache=sampling_config.use_kv_cache
     )
 
     print(f"Synthesising utterance...")

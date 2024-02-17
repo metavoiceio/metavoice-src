@@ -1,7 +1,7 @@
 import inspect
 import math
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -10,11 +10,7 @@ from einops import rearrange
 from torch.nn import functional as F
 
 from fam.llm.layers import Block, LayerNorm, RMSNorm
-from fam.llm.mixins import (
-    CausalInferenceMixin,
-    GPT2LoadingMixin,
-    NonCausalInferenceMixin,
-)
+from fam.llm.mixins import CausalInferenceMixin, NonCausalInferenceMixin
 
 END_OF_TEXT_TOKEN = 1537
 
@@ -80,7 +76,7 @@ def _check_speaker_emb_dims(
     return speaker_embs
 
 
-class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin, GPT2LoadingMixin):
+class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin):
     def __init__(self, config: GPTConfig, speaker_emb_dim: Optional[int] = None):
         """
         Initialize the GPT model.
@@ -354,7 +350,10 @@ class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin, GPT2LoadingM
         top_p: Optional[float] = None,
         speaker_embs: Optional[torch.Tensor] = None,
         batch_size: Optional[int] = None,
-        guidance_scale: Optional[float] = None,
+        guidance_scale: Optional[Tuple[float, float]] = None,
+        dtype: torch.dtype = torch.bfloat16,
+        end_of_audio_token: int = 99999,  # Dummy values will disable early termination / guidance features.
+        end_of_text_token: int = 99999,
     ):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,num_hierarchies,t)) and complete
@@ -377,6 +376,9 @@ class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin, GPT2LoadingM
                 speaker_embs=speaker_embs,
                 batch_size=batch_size,
                 guidance_scale=guidance_scale,
+                dtype=dtype,
+                end_of_audio_token=end_of_audio_token,
+                end_of_text_token=end_of_text_token,
             )
 
         else:
@@ -403,5 +405,4 @@ class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin, GPT2LoadingM
                         top_k=top_k,
                     )
                 )
-            return torch.cat(out, dim=0)
             return torch.cat(out, dim=0)

@@ -2,14 +2,19 @@
 
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
 * **Emotional speech rhythm and tone** in English. No hallucinations.
+* **Zero-shot cloning for American & British voices**, with 30s reference audio.
 * Support for (cross-lingual) **voice cloning with finetuning**.
   * We have had success with as little as 1 minute training data for Indian speakers.
-* **Zero-shot cloning for American & British voices**, with 30s reference audio.
 * Support for **long-form synthesis**.
 
 We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used without restrictions*.
 
-Try out [demo](https://ttsdemo.themetavoice.xyz/)!
+Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
+
+## Installation  
+
+**Pre-requisites:** Python >=3.10,<3.12; GPU with >=24GB RAM.
+
 
 ## Quickstart - TLDR
 
@@ -19,6 +24,7 @@ docker-compose up -d && docker-compose ps && docker-compose logs -f
 
 Explore exposed [API](http://localhost:8869/docs)!
 ## Installation
+=======
 ```bash
 # install ffmpeg
 wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
@@ -29,13 +35,17 @@ sudo mv ffmpeg-git-*-static/ffprobe ffmpeg-git-*-static/ffmpeg /usr/local/bin/
 rm -rf ffmpeg-git-*
 
 pip install -r requirements.txt
+
+# Works only on lasest NVidia GPUs. If you have a different GPU, do not install this.
+pip install flash-attn
+
 pip install -e .
 ```
 
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py),
 ```bash
-python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" --spk_cond_path="assets/ava.flac"
+python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" --spk_cond_path="assets/bria.mp3"
 ```
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py)
@@ -43,7 +53,7 @@ python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" -
 python fam/llm/serving.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1"
 ```
 
-3. Use it on HuggingFace
+3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
 
 ## Soon
 - Long form TTS
@@ -70,4 +80,4 @@ The model supports:
 - See all [active issues](https://github.com/metavoiceio/metavoice-src/issues)!
 
 ## Acknowledgements
-We are grateful to Together.ai for their 24/7 help in marshalling our cluster. We thank the teams of AWS, GCP & HuggingFace for support with their cloud platforms.
+We are grateful to Together.ai for their 24/7 help in marshalling our cluster. We thank the teams of AWS, GCP & Hugging Face for support with their cloud platforms.

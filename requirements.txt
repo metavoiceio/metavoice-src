@@ -4,9 +4,8 @@ librosa
 tqdm
 tiktoken==0.5.1
 audiocraft
-numpy<1.25
+numpy
 ninja
-flash-attn
 fastapi
 uvicorn
 tyro

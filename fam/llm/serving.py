@@ -3,8 +3,9 @@ import logging
 import shlex
 import subprocess
 import tempfile
+import warnings
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal, Optional, Tuple
 
 import fastapi
 import fastapi.middleware.cors
@@ -55,6 +56,9 @@ class ServingConfig:
     enhancer: Optional[Literal["df"]] = "df"
     """Enhancer to use for post-processing."""
 
+    compile: bool = False
+    """Whether to compile the model using PyTorch 2.0."""
+
     port: int = 58003
 
 
@@ -73,7 +77,7 @@ GlobalState = _GlobalState()
 @dataclass(frozen=True)
 class TTSRequest:
     text: str
-    guidance: Optional[float] = 3.0
+    guidance: Optional[Tuple[float, float]] = (3.0, 1.0)
     top_p: Optional[float] = 0.95
     speaker_ref_path: Optional[str] = None
     top_k: Optional[int] = None
@@ -95,6 +99,9 @@ async def text_to_speech(req: Request):
                 wav_path = _convert_audiodata_to_wav_path(audiodata, wav_tmp)
             else:
                 wav_path = tts_req.speaker_ref_path
+            if wav_path is None:
+                warnings.warn("Running without speaker reference")
+                assert tts_req.guidance is None
             wav_out_path = sample_utterance(
                 tts_req.text,
                 wav_path,
@@ -126,7 +133,8 @@ async def text_to_speech(req: Request):
 
 def _convert_audiodata_to_wav_path(audiodata, wav_tmp):
     with tempfile.NamedTemporaryFile() as unknown_format_tmp:
-        assert unknown_format_tmp.write(audiodata) > 0
+        if unknown_format_tmp.write(audiodata) == 0:
+            return None
         unknown_format_tmp.flush()
 
         subprocess.check_output(
@@ -161,7 +169,7 @@ if __name__ == "__main__":
         seed=1337,
         device=device,
         dtype=GlobalState.config.dtype,
-        compile=False,
+        compile=GlobalState.config.compile,
         init_from="resume",
         output_dir=tempfile.mkdtemp(),
     )
@@ -176,7 +184,9 @@ if __name__ == "__main__":
         **common_config,
     )
 
-    spkemb, llm_stg1, llm_stg2 = build_models(config1, config2, device=device, use_kv_cache="flash_decoding")
+    spkemb, llm_stg1, llm_stg2 = build_models(
+        config1, config2, model_dir=model_dir, device=device, use_kv_cache="flash_decoding"
+    )
     GlobalState.spkemb_model = spkemb
     GlobalState.first_stage_model = llm_stg1
     GlobalState.second_stage_model = llm_stg2
