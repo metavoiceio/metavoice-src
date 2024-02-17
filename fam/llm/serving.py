@@ -56,6 +56,10 @@ class ServingConfig:
     enhancer: Optional[Literal["df"]] = "df"
     """Enhancer to use for post-processing."""
 
+    use_kv_cache: Optional[Literal["flash_decoding", "vanilla"]] = None
+    """Type of kv caching to use for inference: 1) [none] no kv caching, 2) [flash_decoding] use the
+    flash decoding kernel, 3) [vanilla] use flash attention 2 with hand implemented kv-cache."""
+
     compile: bool = False
     """Whether to compile the model using PyTorch 2.0."""
 
@@ -185,7 +189,7 @@ if __name__ == "__main__":
     )
 
     spkemb, llm_stg1, llm_stg2 = build_models(
-        config1, config2, model_dir=model_dir, device=device, use_kv_cache="vanilla" if device != "cuda" else "flash_decoding"
+        config1, config2, model_dir=model_dir, device=device, use_kv_cache=GlobalState.config.use_kv_cache
     )
     GlobalState.spkemb_model = spkemb
     GlobalState.first_stage_model = llm_stg1
