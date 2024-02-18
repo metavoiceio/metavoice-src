@@ -131,6 +131,11 @@ class SelfAttention(nn.Module):
         k = k.squeeze(2)  # (B, T, nh, hs)
         v = v.squeeze(2)  # (B, T, nh, hs)
 
+        # if kv-caching and causal, for the "prefill" stage, we need to use a causal mask, and
+        # use no mask for the "one time step" parts.
+        # calculate this before updating kv_caching so we have the right value for kv_cache_first_empty_index
+        is_causal_attn_mask = self.causal and (not self.kv_cache_enabled or self.kv_cache_first_empty_index == 0)
+
         if self.kv_cache_enabled:
             k, v = self._update_kv_cache(q, k, v)
 
@@ -143,7 +148,7 @@ class SelfAttention(nn.Module):
             v,
             attn_mask=None,
             dropout_p=self.dropout if self.training else 0,
-            is_causal=self.causal and (not self.kv_cache_enabled or self.kv_cache_first_empty_index == 0),
+            is_causal=is_causal_attn_mask,
         ).transpose(
             1, 2
         )  # (B, nh, T, hs) -> (B, T, nh, hs)
