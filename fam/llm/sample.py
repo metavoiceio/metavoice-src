@@ -1,4 +1,3 @@
-# export LD_LIBRARY_PATH=/opt/conda/envs/mv/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 import dataclasses
 import hashlib
 import json
@@ -22,7 +21,7 @@ from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook, TiltedEncodec
 from fam.llm.decoders import Decoder, EncodecDecoder
 from fam.llm.enhancers import BaseEnhancer, get_enhancer
 from fam.llm.model import GPT, GPTConfig
-from fam.llm.utils import normalize_text
+from fam.llm.utils import get_default_dtype, normalize_text
 from fam.quantiser.audio.speaker_encoder.model import SpeakerEncoder
 from fam.quantiser.text.tokenise import TrainedBPETokeniser
 
@@ -54,14 +53,12 @@ class Model:
         tokenizer_cls: Type[TrainedBPETokeniser],
         decoder_cls: Type[Decoder],
         data_adapter_fn,
-        use_kv_cache: Optional[Literal["none", "flash_decoding", "vanilla"]] = None,
     ):
         # TODO: disentangle the encodec stuff and numbers etc with rest of this code (esp at encoder-only / second stage model inference)
         # TODO: remove magic number
         self._encodec_codes_pad_token = 1024
         self._num_encodec_codebooks = 8
         self.config = config
-        self.use_kv_cache = use_kv_cache
 
         torch.manual_seed(config.seed)
         torch.cuda.manual_seed(config.seed)
@@ -550,7 +547,7 @@ def sample_utterance(
     )[0]
 
 
-def build_models(config_first_stage, config_second_stage, model_dir, device, use_kv_cache):
+def build_models(config_first_stage, config_second_stage, model_dir, device):
     smodel = SpeakerEncoder(
         weights_fpath=os.path.join(model_dir, "speaker_encoder.pt"), device=device, eval=True, verbose=False
     )
@@ -560,7 +557,6 @@ def build_models(config_first_stage, config_second_stage, model_dir, device, use
         TrainedBPETokeniser,
         EncodecDecoder,
         data_adapter_fn=data_adapter.decode,
-        use_kv_cache=use_kv_cache,
     )
     data_adapter_second_stage = TiltedEncodec(end_of_audio_token=1024)
     llm_second_stage = Model(
@@ -585,11 +581,11 @@ class SamplingControllerConfig:
     Sample from a trained model.
     """
 
-    huggingface_repo_id: str
-    """Absolute path to the model directory."""
-
     spk_cond_path: str
     """Path to speaker reference file. Min. 30s of audio required. Supports both local paths & public URIs. Audio formats: wav, flac & mp3"""
+
+    huggingface_repo_id: str = "metavoiceio/metavoice-1B-v0.1"
+    """Absolute path to the model directory."""
 
     text: str = (
         "This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model by MetaVoice."
@@ -617,7 +613,7 @@ class SamplingControllerConfig:
     device: Literal["cuda", "cpu"] = "cuda"
     """Device to use for sampling."""
 
-    dtype: Literal["bfloat16", "float16", "float32", "tfloat32"] = "bfloat16"
+    dtype: Literal["bfloat16", "float16", "float32", "tfloat32"] = get_default_dtype()
     """Data type to use for sampling."""
 
     compile: bool = False
@@ -628,10 +624,6 @@ class SamplingControllerConfig:
 
     init_from: str = "resume"
     """Either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')."""
-
-    use_kv_cache: Optional[Literal["flash_decoding", "vanilla"]] = "flash_decoding"
-    """Type of kv caching to use for inference: 1) [none] no kv caching, 2) [flash_decoding] use the 
-    flash decoding kernel, 3) [vanilla] use flash attention 2 with hand implemented kv-cache."""
 
     output_dir: str = "samples/"
     """Relative path to output directory"""
@@ -685,7 +677,6 @@ if __name__ == "__main__":
         config_second_stage,
         model_dir=model_dir,
         device=sampling_config.device,
-        use_kv_cache=sampling_config.use_kv_cache,
     )
 
     print(f"Synthesising utterance...")
@@ -704,7 +695,3 @@ if __name__ == "__main__":
         top_p=sampling_config.top_p,
         temperature=sampling_config.temperature,
     )
-
-
-# remove enhancer
-# kv cache flag
