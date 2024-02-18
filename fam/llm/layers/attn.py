@@ -1,17 +1,5 @@
-import math
-import warnings
-
 import torch
 import torch.nn as nn
-
-try:
-    from flash_attn import (  # type: ignore
-        flash_attn_func,
-        flash_attn_qkvpacked_func,
-        flash_attn_with_kvcache,
-    )
-except ImportError:
-    warnings.warn("flash_attn not installed, make sure to replace attention mechanism with torch_attn")
 from torch.nn import functional as F
 
 
@@ -79,7 +67,6 @@ class SelfAttention(nn.Module):
         self.n_embd = config.n_embd
         self.dropout = config.dropout
         self.causal = config.causal
-        self.attn_kernel_type = config.attn_kernel_type
         self.attn_dropout = nn.Dropout(config.dropout)
 
         self.kv_cache_enabled = False
@@ -129,79 +116,6 @@ class SelfAttention(nn.Module):
 
         return k, v
 
-    def _fa2_attention(self, c_x: torch.Tensor) -> torch.Tensor:
-        """
-        Performs Flash Attention 2.0 CUDA kernel based attention.
-
-        Args:
-            c_x: The input tensor.
-
-        Returns:
-            The output tensor.
-        """
-        if self.kv_cache_enabled:
-            q, k, v = c_x.split(1, dim=2)
-            q = q.squeeze(2)
-            k = k.squeeze(2)
-            v = v.squeeze(2)
-
-            k, v = self._update_kv_cache(q, k, v)
-
-            y = flash_attn_func(
-                q,
-                k,
-                v,
-                dropout_p=self.dropout if self.training else 0,
-                softmax_scale=None,
-                causal=self.causal,
-            )
-        else:
-            # efficient attention using Flash Attention 2.0 CUDA kernels
-            y = flash_attn_qkvpacked_func(
-                c_x, dropout_p=self.dropout if self.training else 0, softmax_scale=None, causal=self.causal
-            )  # outputs (B, T, nh, hs)
-
-        return y
-
-    def _fd_attention(self, c_x: torch.Tensor) -> torch.Tensor:
-        """
-        Performs Flash decoding based attention.
-
-        Args:
-            c_x: The input tensor.
-
-        Returns:
-            The output tensor.
-
-        Raises:
-            Exception: If key-value caching is not enabled.
-            Exception: If non-causal attention is activated.
-        """
-        if self.kv_cache_enabled is False:
-            raise Exception("Flash decoding required kv_cache to be enabled")
-
-        if self.causal is False:
-            raise Exception("It is only supported for causal attention")
-
-        q, k, v = c_x.split(1, dim=2)
-        q = q.squeeze(2)
-        k = k.squeeze(2)
-        v = v.squeeze(2)
-
-        y = flash_attn_with_kvcache(
-            q,
-            self.kv_cache[0],
-            self.kv_cache[1],
-            k,
-            v,
-            cache_seqlens=self.kv_cache_first_empty_index,
-            softmax_scale=None,
-            causal=self.causal,
-        )
-        self.kv_cache_first_empty_index += q.shape[1]
-
-        return y
-
     def _torch_attn(self, c_x: torch.Tensor) -> torch.Tensor:
         """
         Performs attention using the torch.nn.functional.scaled_dot_product_attention function.
@@ -236,39 +150,6 @@ class SelfAttention(nn.Module):
 
         return y
 
-    def _vanilla_attn(self, c_x: torch.Tensor) -> torch.Tensor:
-        """
-        Performs vanilla attention.
-
-        Args:
-            c_x: The input tensor.
-
-        Returns:
-            The output tensor.
-        """
-        q, k, v = c_x.split(1, dim=2)  # q, k, v of shape (B, T, nh, hs)
-        q = q.squeeze(2)  # (B, T, nh, hs)
-        k = k.squeeze(2)  # (B, T, nh, hs)
-        v = v.squeeze(2)  # (B, T, nh, hs)
-
-        if self.kv_cache_enabled:
-            k, v = self._update_kv_cache(q, k, v)
-
-        q = q.transpose(1, 2)  # (B, nh, T, hs)
-        k = k.transpose(1, 2)  # (B, nh, T, hs)
-        v = v.transpose(1, 2)  # (B, nh, T, hs)
-        att = q @ k.transpose(-2, -1) * (1.0 / math.sqrt(k.size(-1)))  # (B, nh, T, T)
-        if self.causal and (not self.kv_cache_enabled or self.kv_cache_first_empty_index == 0):
-            att = att.masked_fill(
-                torch.triu(torch.ones_like(att, dtype=torch.bool), diagonal=1), float("-inf")
-            )  # (B, nh, T, T)
-        att = F.softmax(att, dim=-1)  # (B, nh, T, T)
-        att = self.attn_dropout(att)  # (B, nh, T, T)
-        y = att @ v  # (B, nh, T, hs)
-        y = y.transpose(1, 2)  # (B, T, nh, hs)
-
-        return y
-
     def forward(self, x):
         """
         Performs the forward pass of the SelfAttention module.
@@ -285,16 +166,7 @@ class SelfAttention(nn.Module):
         c_x = self.c_attn(x).view(B, T, 3, self.n_head, C // self.n_head)  # (B, T, 3, nh, hs)
 
         # causal self-attention;
-        if self.attn_kernel_type == "fa2":
-            y = self._fa2_attention(c_x)
-        elif self.attn_kernel_type == "fd":
-            y = self._fd_attention(c_x)
-        elif self.attn_kernel_type == "torch_attn":
-            y = self._torch_attn(c_x)
-        elif self.attn_kernel_type == "hand":
-            y = self._vanilla_attn(c_x)
-        else:
-            raise Exception(f"Unknown attention kernel type: {self.attn_kernel_type}")
+        y = self._torch_attn(c_x)
 
         y = y.contiguous().view(B, T, C)  # re-assemble all head outputs side by side: (B, T, nh, hs) -> (B, T, hs * nh)
         # output projection

@@ -1,3 +1,4 @@
+# export LD_LIBRARY_PATH=/opt/conda/envs/mv/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 import dataclasses
 import hashlib
 import json
@@ -142,20 +143,8 @@ class Model:
             allow_ops_in_compiled_graph()
             self.model = torch.compile(self.model)  # type: ignore
 
-        if self.use_kv_cache is not None:
-            if "causal" in self.checkpoint_config and self.checkpoint_config["causal"] is False:
-                raise Exception("kv_cache not supported for non-causal models!")
-
-            if self.use_kv_cache == "flash_decoding":
-                self.model.enable_kv_cache()
-                for block in self.model.transformer.h:
-                    block.attn.attn_kernel_type = "fd"
-            elif self.use_kv_cache == "vanilla":
-                for block in self.model.transformer.h:
-                    block.attn.attn_kernel_type = "torch_attn"
-                self.model.enable_kv_cache()
-            else:
-                raise NotImplementedError(f"kv_cache type {self.use_kv_cache} not implemented!")
+        if "causal" in self.checkpoint_config and self.checkpoint_config["causal"] is True:
+            self.model.enable_kv_cache()
 
     def causal_sample(
         self,
@@ -640,7 +629,7 @@ class SamplingControllerConfig:
     init_from: str = "resume"
     """Either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')."""
 
-    use_kv_cache: Optional[Literal["flash_decoding", "vanilla"]] = None
+    use_kv_cache: Optional[Literal["flash_decoding", "vanilla"]] = "flash_decoding"
     """Type of kv caching to use for inference: 1) [none] no kv caching, 2) [flash_decoding] use the 
     flash decoding kernel, 3) [vanilla] use flash attention 2 with hand implemented kv-cache."""
 
@@ -696,7 +685,7 @@ if __name__ == "__main__":
         config_second_stage,
         model_dir=model_dir,
         device=sampling_config.device,
-        use_kv_cache=sampling_config.use_kv_cache
+        use_kv_cache=sampling_config.use_kv_cache,
     )
 
     print(f"Synthesising utterance...")
@@ -715,3 +704,7 @@ if __name__ == "__main__":
         top_p=sampling_config.top_p,
         temperature=sampling_config.temperature,
     )
+
+
+# remove enhancer
+# kv cache flag
