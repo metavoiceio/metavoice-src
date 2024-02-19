@@ -1,6 +1,11 @@
 # MetaVoice-1B
 
-Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
+
+<p>
+<a href="https://ttsdemo.themetavoice.xyz/"><b>Demo</b></a> | <a target="_blank" style="display: inline-block; vertical-align: middle" href="https://colab.research.google.com/drive/1UmjE1mzfG4td0rCjJEaAWGQXpn_GuwwY?authuser=0#scrollTo=mPgTfUdBJF1B">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a> 
+</p>
 
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
 * **Emotional speech rhythm and tone** in English.
@@ -42,7 +47,7 @@ pip install -e .
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py)
 ```bash
-python fam/llm/sample.py --spk_cond_path="assets/bria.mp3"
+python fam/llm/sample.py --spk_cond_path="assets/bria.mp3" --text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model."
 ```
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py) and [UI](/fam/ui/app.py).
