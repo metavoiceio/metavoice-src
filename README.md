@@ -39,12 +39,12 @@ pip install -e .
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py)
 ```bash
-python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" --spk_cond_path="assets/bria.mp3"
+python fam/llm/sample.py --spk_cond_path="assets/bria.mp3"
 ```
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py)
 ```bash
-python fam/llm/serving.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1"
+python fam/llm/serving.py
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
