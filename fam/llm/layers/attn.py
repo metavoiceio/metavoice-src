@@ -1,6 +1,13 @@
+import warnings
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+
+try:
+    from flash_attn import flash_attn_with_kvcache  # type: ignore
+except ImportError:
+    warnings.warn("flash_attn not installed, make sure to replace attention mechanism with torch_attn")
 
 
 class SelfAttention(nn.Module):
@@ -67,6 +74,7 @@ class SelfAttention(nn.Module):
         self.n_embd = config.n_embd
         self.dropout = config.dropout
         self.causal = config.causal
+        self.attn_kernel_type = config.attn_kernel_type
         self.attn_dropout = nn.Dropout(config.dropout)
 
         self.kv_cache_enabled = False
@@ -115,6 +123,42 @@ class SelfAttention(nn.Module):
         v = self.kv_cache[1, :, : self.kv_cache_first_empty_index]
 
         return k, v
+
+    def _fd_attention(self, c_x: torch.Tensor) -> torch.Tensor:
+        """
+        Performs Flash decoding based attention.
+        Args:
+            c_x: The input tensor.
+        Returns:
+            The output tensor.
+        Raises:
+            Exception: If key-value caching is not enabled.
+            Exception: If non-causal attention is activated.
+        """
+        if self.kv_cache_enabled is False:
+            raise Exception("Flash decoding required kv_cache to be enabled")
+
+        if self.causal is False:
+            raise Exception("It is only supported for causal attention")
+
+        q, k, v = c_x.split(1, dim=2)
+        q = q.squeeze(2)
+        k = k.squeeze(2)
+        v = v.squeeze(2)
+
+        y = flash_attn_with_kvcache(
+            q,
+            self.kv_cache[0],
+            self.kv_cache[1],
+            k,
+            v,
+            cache_seqlens=self.kv_cache_first_empty_index,
+            softmax_scale=None,
+            causal=self.causal,
+        )
+        self.kv_cache_first_empty_index += q.shape[1]
+
+        return y
 
     def _torch_attn(self, c_x: torch.Tensor) -> torch.Tensor:
         """
@@ -171,7 +215,12 @@ class SelfAttention(nn.Module):
         c_x = self.c_attn(x).view(B, T, 3, self.n_head, C // self.n_head)  # (B, T, 3, nh, hs)
 
         # causal self-attention;
-        y = self._torch_attn(c_x)
+        if self.attn_kernel_type == "fd":
+            y = self._fd_attention(c_x)
+        elif self.attn_kernel_type == "torch_attn":
+            y = self._torch_attn(c_x)
+        else:
+            raise Exception(f"Unknown attention kernel type: {self.attn_kernel_type}")
 
         y = y.contiguous().view(B, T, C)  # re-assemble all head outputs side by side: (B, T, nh, hs) -> (B, T, hs * nh)
         # output projection

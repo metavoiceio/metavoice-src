@@ -49,8 +49,18 @@ def normalize_text(text: str) -> str:
     return text
 
 
+def get_default_use_kv_cache() -> str:
+    """Compute default value for 'use_kv_cache' based on GPU architecture"""
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            device_properties = torch.cuda.get_device_properties(i)
+            return "vanilla" if "Turing" or "Tesla" in device_properties else "flash_decoding"
+    else:
+        return "vanilla"
+
+
 def get_default_dtype() -> str:
-    """Compute default dtype based on GPU architecture"""
+    """Compute default 'dtype' based on GPU architecture"""
     if torch.cuda.is_available():
         for i in range(torch.cuda.device_count()):
             device_properties = torch.cuda.get_device_properties(i)
