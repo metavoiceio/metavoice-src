@@ -28,6 +28,9 @@ tar xvf ffmpeg-git-amd64-static.tar.xz
 sudo mv ffmpeg-git-*-static/ffprobe ffmpeg-git-*-static/ffmpeg /usr/local/bin/
 rm -rf ffmpeg-git-*
 
+# install rust if not installed (ensure you've restarted your terminal after installation)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
 pip install -r requirements.txt
 
 # Flash Attention works only on latest Nvidia GPUs (Hopper, Ampere & Ada). If you have a different GPU (Tesla or Turing), do not install this.
@@ -42,9 +45,10 @@ pip install -e .
 python fam/llm/sample.py --spk_cond_path="assets/bria.mp3"
 ```
 
-2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py)
+2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py) and [UI](/fam/ui/app.py).
 ```bash
 python fam/llm/serving.py
+python fam/ui/app.py 
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)

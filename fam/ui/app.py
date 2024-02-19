@@ -11,7 +11,6 @@ RADIO_CHOICES = ["Preset voices", "Upload target voice"]
 MAX_CHARS = 220
 PRESET_VOICES = {
     # female
-    "Ava": "https://cdn.themetavoice.xyz/speakers/ava.flac",
     "Bria": "https://cdn.themetavoice.xyz/speakers/bria.mp3",
     # male
     "Alex": "https://cdn.themetavoice.xyz/speakers/alex.mp3",
@@ -63,7 +62,7 @@ def tts(to_say, top_p, guidance, toggle, preset_dropdown, upload_target):
 
     config = {
         "text": to_say,
-        "guidance": d_guidance,
+        "guidance": (d_guidance, 1.0),
         "top_p": d_top_p,
         "speaker_ref_path": PRESET_VOICES[preset_dropdown] if toggle == RADIO_CHOICES[0] else None,
     }
