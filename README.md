@@ -1,7 +1,9 @@
 # MetaVoice-1B
 
+Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
+
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
-* **Emotional speech rhythm and tone** in English. No hallucinations.
+* **Emotional speech rhythm and tone** in English.
 * **Zero-shot cloning for American & British voices**, with 30s reference audio.
 * Support for (cross-lingual) **voice cloning with finetuning**.
   * We have had success with as little as 1 minute training data for Indian speakers.
@@ -9,12 +11,14 @@ MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for 
 
 We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used without restrictions*.
 
-Try out the [demo](https://ttsdemo.themetavoice.xyz/)!
 
 ## Installation  
 
-**Pre-requisites:** Python >=3.10,<3.12; GPU with >=24GB RAM.
+**Pre-requisites:**
+- GPU VRAM >=16GB
+- Python >=3.10,<3.12
 
+**Environment setup**
 ```bash
 # install ffmpeg
 wget https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz
@@ -26,14 +30,14 @@ rm -rf ffmpeg-git-*
 
 pip install -r requirements.txt
 
-# Works only on lasest NVidia GPUs. If you have a different GPU, do not install this.
+# Flash Attention works only on latest Nvidia GPUs (Hopper, Ampere & Ada). If you have a different GPU (Tesla or Turing), do not install this.
 pip install flash-attn
 
 pip install -e .
 ```
 
 ## Usage
-1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py),
+1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py)
 ```bash
 python fam/llm/sample.py --huggingface_repo_id="metavoiceio/metavoice-1B-v0.1" --spk_cond_path="assets/bria.mp3"
 ```
