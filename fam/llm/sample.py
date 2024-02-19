@@ -638,7 +638,7 @@ class SamplingControllerConfig:
     init_from: str = "resume"
     """Either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')."""
 
-    use_kv_cache: Optional[Literal["flash_decoding", "vanilla"]] = "flash_decoding"
+    use_kv_cache: Optional[Literal["flash_decoding", "vanilla"]] = get_default_use_kv_cache()
     """Type of kv caching to use for inference: 1) [none] no kv caching, 2) [flash_decoding] use the 
     flash decoding kernel, 3) [vanilla] use torch attention with hand implemented kv-cache."""
 
@@ -697,28 +697,18 @@ if __name__ == "__main__":
         use_kv_cache=sampling_config.use_kv_cache,
     )
 
-    import time
-
-    import numpy as np
-
-    durations = []
-    for i in range(5):
-        start = time.time()
-        sample_utterance(
-            sampling_config.text,
-            os.path.expanduser(sampling_config.spk_cond_path),
-            smodel,
-            llm_first_stage,
-            llm_second_stage,
-            sampling_config.enhancer,
-            first_stage_ckpt_path,
-            second_stage_ckpt_path,
-            sampling_config.guidance_scale,
-            max_new_tokens=sampling_config.max_new_tokens,
-            top_k=sampling_config.top_k,
-            top_p=sampling_config.top_p,
-            temperature=sampling_config.temperature,
-        )
-        durations.append(time.time() - start)
-
-    print(np.mean(durations))
+    sample_utterance(
+        sampling_config.text,
+        os.path.expanduser(sampling_config.spk_cond_path),
+        smodel,
+        llm_first_stage,
+        llm_second_stage,
+        sampling_config.enhancer,
+        first_stage_ckpt_path,
+        second_stage_ckpt_path,
+        sampling_config.guidance_scale,
+        max_new_tokens=sampling_config.max_new_tokens,
+        top_k=sampling_config.top_k,
+        top_p=sampling_config.top_p,
+        temperature=sampling_config.temperature,
+    )
