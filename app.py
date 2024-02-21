@@ -108,14 +108,13 @@ def _handle_edge_cases(to_say, upload_target):
 
 
 def tts(to_say, top_p, guidance, toggle, preset_dropdown, upload_target):
-    d_top_p = denormalise_top_p(top_p)
-    d_guidance = denormalise_guidance(guidance)
-
-    _handle_edge_cases(to_say, upload_target)
-
-    to_say = to_say if len(to_say) < MAX_CHARS else to_say[:MAX_CHARS]
-
     try:
+        d_top_p = denormalise_top_p(top_p)
+        d_guidance = denormalise_guidance(guidance)
+
+        _handle_edge_cases(to_say, upload_target)
+
+        to_say = to_say if len(to_say) < MAX_CHARS else to_say[:MAX_CHARS]
         return sample_utterance(
             to_say,
             spk_cond_path=PRESET_VOICES[preset_dropdown] if toggle == RADIO_CHOICES[0] else upload_target,
@@ -123,7 +122,7 @@ def tts(to_say, top_p, guidance, toggle, preset_dropdown, upload_target):
             first_stage_model=llm_first_stage,
             second_stage_model=llm_second_stage,
             enhancer=sampling_config.enhancer,
-            guidance_scale=d_guidance,
+            guidance_scale=(d_guidance, 1.0),
             max_new_tokens=sampling_config.max_new_tokens,
             temperature=sampling_config.temperature,
             top_k=sampling_config.top_k,
