@@ -9,6 +9,8 @@ import torch
 from audiocraft.data.audio import audio_read, audio_write
 from audiocraft.models import MultiBandDiffusion  # type: ignore
 
+mbd = MultiBandDiffusion.get_mbd_24khz(bw=6)  # 1.5
+
 
 class Decoder(ABC):
     @abstractmethod
@@ -23,11 +25,10 @@ class EncodecDecoder(Decoder):
         data_adapter_fn: Callable[[list[list[int]]], tuple[list[int], list[list[int]]]],
         output_dir: str,
     ):
-        self._mbd_bandwidth = 6  # 1.5
         self._mbd_sample_rate = 24_000
         self._end_of_audio_token = 1024
         self._num_codebooks = 8
-        self.mbd = MultiBandDiffusion.get_mbd_24khz(bw=self._mbd_bandwidth)
+        self.mbd = mbd
 
         self.tokeniser_decode_fn = tokeniser_decode_fn
         self._data_adapter_fn = data_adapter_fn

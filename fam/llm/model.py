@@ -42,7 +42,7 @@ class GPTConfig:
     rmsnorm_eps: Optional[float] = None  # only used for rmsnorm
     nonlinearity_type: str = "gelu"  # "gelu" or "swiglu"
     swiglu_multiple_of: Optional[int] = None  # MLP hidden layer (using SwiGLU) will be multiple of this
-    attn_kernel_type: Literal["fa2", "torch_attn", "hand"] = "fa2"
+    attn_kernel_type: Literal["fd", "torch_attn"] = "torch_attn"
     kv_cache_enabled: bool = False  # whether to use key-value cache for attention
 
 
