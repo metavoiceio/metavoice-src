@@ -1,3 +1,8 @@
+---
+tags: ["text-to-speech", "metavoice", "english", "pretrained"]
+suggested_hardware: "a10g-small"
+---
+
 # MetaVoice-1B
 
 
@@ -50,10 +55,10 @@ pip install -e .
 python fam/llm/sample.py --spk_cond_path="assets/bria.mp3" --text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model."
 ```
 
-2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py) and [UI](/fam/ui/app.py).
+2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py) or [web UI](/fam/ui/app.py)
 ```bash
 python fam/llm/serving.py
-python fam/ui/app.py 
+python app.py 
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)

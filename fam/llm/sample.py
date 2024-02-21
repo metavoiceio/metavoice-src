@@ -10,7 +10,6 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import List, Literal, Optional, Tuple, Type, Union
 
-import librosa
 import torch
 import tqdm
 import tqdm.contrib.concurrent
@@ -21,7 +20,12 @@ from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook, TiltedEncodec
 from fam.llm.decoders import Decoder, EncodecDecoder
 from fam.llm.enhancers import BaseEnhancer, get_enhancer
 from fam.llm.model import GPT, GPTConfig
-from fam.llm.utils import get_default_dtype, get_default_use_kv_cache, normalize_text
+from fam.llm.utils import (
+    check_audio_file,
+    get_default_dtype,
+    get_default_use_kv_cache,
+    normalize_text,
+)
 from fam.quantiser.audio.speaker_encoder.model import SpeakerEncoder
 from fam.quantiser.text.tokenise import TrainedBPETokeniser
 
@@ -413,11 +417,6 @@ def get_cached_file(file_or_uri: str):
             cache_path = file_or_uri
         else:
             raise FileNotFoundError(f"File {file_or_uri} not found!")
-
-    # check audio file is at min. 30s in length
-    audio, sr = librosa.load(cache_path)
-    assert librosa.get_duration(y=audio, sr=sr) >= 30, "Speaker reference audio file needs to be >= 30s in duration."
-
     return cache_path
 
 
@@ -657,6 +656,8 @@ class SamplingControllerConfig:
 if __name__ == "__main__":
     # TODO: add support for batch sampling via CLI. Function has been implemented above.
     sampling_config = tyro.cli(SamplingControllerConfig, use_underscores=True)
+
+    check_audio_file(sampling_config.spk_cond_path)
 
     model_dir = snapshot_download(repo_id=sampling_config.huggingface_repo_id)
     first_stage_ckpt_path = get_first_stage_path(model_dir)
