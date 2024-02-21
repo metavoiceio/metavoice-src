@@ -8,64 +8,58 @@ volumes:
   hf-cache:
     driver: local
 
+x-common-settings: &common-settings
+  volumes:
+    - hf-cache:/.hf-cache
+    - ./assets:/app/assets
+  deploy:
+    replicas: 1
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [ gpu ]
+  runtime: nvidia
+  ipc: host
+  tty: true # enable colorized logs
+  build:
+    context: .
+  image: metavoice-server:latest
+  networks:
+    - metavoice-net
+  environment:
+    - NVIDIA_VISIBLE_DEVICES=all
+    - HF_HOME=/.hf-cache
+  logging:
+    options:
+      max-size: "100m"
+      max-file: "10"
+
 services:
   metavoice-server:
-    volumes:
-      - hf-cache:/.hf-cache
-      - ./assets:/app/assets
-    deploy:
-      replicas: 1
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    runtime: nvidia
-    ipc: host
-    tty: true # enable colorized logs
-    build:
-      context: .
-    command: ['--huggingface_repo_id=metavoiceio/metavoice-1B-v0.1', "--port=80"]
+    <<: *common-settings
+    container_name: metavoice-server
+    command: [ "--port=58004" ]
     ports:
-      - 8869:80
-    networks:
-      - metavoice-net
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - HF_HOME=/.hf-cache
+      - 58004:58004
     logging:
       options:
         max-size: "100m"
         max-file: "10"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://metavoice-server:80/"]
+      test: [ "CMD", "curl", "-f", "http://metavoice-server:58004/" ]
       interval: 1m
       timeout: 20m
       retries: 20
   metavoice-ui:
-    cpus: 1.0
+    <<: *common-settings
     container_name: metavoice-ui
-    volumes:
-      - hf-cache:/.hf-cache
-      - ./assets:/app/assets
-    image: metavoice-server:latest
-    depends_on:
-      - metavoice-server
-    entrypoint: ["python", "fam/ui/app.py"]
+    entrypoint: [ "python3.10", "fam/ui/app.py" ]
     ports:
-      - 7860:7860
-    networks:
-      - metavoice-net
-    environment:
-      - HF_HOME=/.hf-cache
-    logging:
-      options:
-        max-size: "100m"
-        max-file: "10"
+      - 7861:7861
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7861/"]
+      test: [ "CMD", "curl", "-f", "http://localhost:7861" ]
       interval: 1m
       timeout: 20m
       retries: 20
-    tty: true # enable colorized logs
