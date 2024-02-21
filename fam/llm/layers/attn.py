@@ -217,6 +217,8 @@ class SelfAttention(nn.Module):
         k = k.squeeze(2)  # (B, T, nh, hs)
         v = v.squeeze(2)  # (B, T, nh, hs)
 
+        is_causal = self.causal and (not self.kv_cache_enabled or self.kv_cache_first_empty_index == 0)
+
         if self.kv_cache_enabled:
             k, v = self._update_kv_cache(q, k, v)
 
@@ -229,7 +231,7 @@ class SelfAttention(nn.Module):
             v,
             attn_mask=None,
             dropout_p=self.dropout if self.training else 0,
-            is_causal=self.causal and (not self.kv_cache_enabled or self.kv_cache_first_empty_index == 0),
+            is_causal=is_causal,
         ).transpose(
             1, 2
         )  # (B, nh, T, hs) -> (B, T, nh, hs)
@@ -251,6 +253,8 @@ class SelfAttention(nn.Module):
         k = k.squeeze(2)  # (B, T, nh, hs)
         v = v.squeeze(2)  # (B, T, nh, hs)
 
+        is_causal = not self.kv_cache_enabled or self.kv_cache_first_empty_index == 0
+
         if self.kv_cache_enabled:
             k, v = self._update_kv_cache(q, k, v)
 
@@ -258,7 +262,7 @@ class SelfAttention(nn.Module):
         k = k.transpose(1, 2)  # (B, nh, T, hs)
         v = v.transpose(1, 2)  # (B, nh, T, hs)
         att = q @ k.transpose(-2, -1) * (1.0 / math.sqrt(k.size(-1)))  # (B, nh, T, T)
-        if self.causal and (not self.kv_cache_enabled or self.kv_cache_first_empty_index == 0):
+        if self.causal and (is_causal):
             att = att.masked_fill(
                 torch.triu(torch.ones_like(att, dtype=torch.bool), diagonal=1), float("-inf")
             )  # (B, nh, T, T)

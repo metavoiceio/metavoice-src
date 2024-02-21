@@ -66,7 +66,9 @@ class Model:
         torch.cuda.manual_seed(config.seed)
         torch.backends.cuda.matmul.allow_tf32 = True if config.dtype != "float32" else False  # allow tf32 on matmul
         torch.backends.cudnn.allow_tf32 = True if config.dtype != "float32" else False  # allow tf32 on cudnn
-        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"  # for later use in torch.autocast
+        self.device = (
+            "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        )  # for later use in torch.autocast
         self.ptdtype = {
             "float32": torch.float32,
             "tfloat32": torch.float32,
@@ -269,9 +271,7 @@ class Model:
         # TODO: same code is used during data prep. refactor
         padded_hierarchies_inputs = []
         for encoded_text, encodec_token in zip(encoded_texts, encodec_tokens):
-            x = torch.tensor(encoded_text, dtype=torch.long, device=self.device)[
-                None, None, ...
-            ]  # (b=1, c=1, t)
+            x = torch.tensor(encoded_text, dtype=torch.long, device=self.device)[None, None, ...]  # (b=1, c=1, t)
 
             # TODO: should only happen if decoder is encodecdeocder?
             assert encodec_token.shape[0] == 1
@@ -474,6 +474,7 @@ def _sample_utterance_batch(
         speaker_embs.append(get_cached_embedding(spk_cond_path, spkemb_model) if spk_cond_path else None)
 
     b_speaker_embs = torch.cat(speaker_embs, dim=0)
+    b_speaker_embs = b_speaker_embs.to("mps")
     b_tokens = first_stage_model(
         texts=texts,
         speaker_embs=b_speaker_embs,
@@ -696,7 +697,7 @@ if __name__ == "__main__":
         config_second_stage,
         model_dir=model_dir,
         device=sampling_config.device,
-        use_kv_cache=sampling_config.use_kv_cache
+        use_kv_cache=sampling_config.use_kv_cache,
     )
 
     print(f"Synthesising utterance...")
