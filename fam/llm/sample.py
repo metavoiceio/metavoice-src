@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import traceback
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import List, Literal, Optional, Tuple, Type, Union
@@ -335,6 +336,7 @@ class Model:
                         except Exception as e:
                             print("failed to run MBD.")
                             print(f"reason: {str(e)}")
+                            traceback.print_exc()
                             to_return.append(None)
 
                 return to_return

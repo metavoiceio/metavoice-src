@@ -27,9 +27,8 @@ class EncodecDecoder(Decoder):
         self._mbd_sample_rate = 24_000
         self._end_of_audio_token = 1024
         self._num_codebooks = 8
-        self.mbd = MultiBandDiffusion.get_mbd_24khz(bw=self._mbd_bandwidth)
-
         self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        self.mbd = MultiBandDiffusion.get_mbd_24khz(bw=self._mbd_bandwidth, device=self.device)
 
         self.tokeniser_decode_fn = tokeniser_decode_fn
         self._data_adapter_fn = data_adapter_fn
@@ -81,7 +80,10 @@ class EncodecDecoder(Decoder):
         if causal:
             return tokens
         else:
-            with torch.amp.autocast(device_type="cpu" if self.device != "cuda" else self.device, dtype=torch.bfloat16 if self.device != "cuda" else torch.float32):
+            with torch.amp.autocast(
+                device_type="cpu" if self.device != "cuda" else self.device,
+                dtype=torch.bfloat16 if self.device != "cuda" else torch.float32,
+            ):
                 wav = self.mbd.tokens_to_wav(tokens)
             # NOTE: we couldn't just return wav here as it goes through loudness compression etc :)
 
