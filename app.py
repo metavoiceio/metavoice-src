@@ -230,5 +230,5 @@ with gr.Blocks(title="TTS by MetaVoice") as demo:
     )
 
 
-demo.queue(default_concurrency_limit=2)
+demo.queue()
 demo.launch(favicon_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets/favicon.ico"))

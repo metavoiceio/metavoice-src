@@ -88,6 +88,11 @@ class TTSRequest:
     top_k: Optional[int] = None
 
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 @app.post("/tts", response_class=Response)
 async def text_to_speech(req: Request):
     audiodata = await req.body()

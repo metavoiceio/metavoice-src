@@ -21,8 +21,8 @@ WORKDIR /app
 
 COPY requirements.txt requirements.txt
 
-RUN pip install --no-cache-dir torch packaging wheel flash-attn
-
+RUN pip install --no-cache-dir packaging wheel torch
+RUN pip install --no-cache-dir flash-attn
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .

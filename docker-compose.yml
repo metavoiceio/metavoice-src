@@ -48,14 +48,14 @@ services:
         max-size: "100m"
         max-file: "10"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://metavoice-server:58004/" ]
+      test: [ "CMD", "curl", "http://metavoice-server:58004/health" ]
       interval: 1m
       timeout: 20m
       retries: 20
   metavoice-ui:
     <<: *common-settings
     container_name: metavoice-ui
-    entrypoint: [ "python3.10", "fam/ui/app.py" ]
+    entrypoint: [ "python3.10", "app.py" ]
     ports:
       - 7861:7861
     healthcheck:
