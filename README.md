@@ -59,8 +59,9 @@ python app.py
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
 
 ## Soon
-- Long form TTS
+- Faster inference ⚡
 - Fine-tuning code
+- Synthesis of arbitrary length text
 
 ## Architecture
 We predict EnCodec tokens from text, and speaker information. This is then diffused up to the waveform level, with post-processing applied to clean up the audio.
