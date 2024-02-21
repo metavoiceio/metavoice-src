@@ -1,7 +1,7 @@
 import inspect
 import math
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Union
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -42,7 +42,7 @@ class GPTConfig:
     rmsnorm_eps: Optional[float] = None  # only used for rmsnorm
     nonlinearity_type: str = "gelu"  # "gelu" or "swiglu"
     swiglu_multiple_of: Optional[int] = None  # MLP hidden layer (using SwiGLU) will be multiple of this
-    attn_kernel_type: Literal["fa2", "torch_attn", "hand"] = "fa2"
+    attn_kernel_type: Literal["fd", "torch_attn"] = "torch_attn"
     kv_cache_enabled: bool = False  # whether to use key-value cache for attention
 
 
@@ -350,7 +350,10 @@ class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin):
         top_p: Optional[float] = None,
         speaker_embs: Optional[torch.Tensor] = None,
         batch_size: Optional[int] = None,
-        guidance_scale: Optional[float] = None,
+        guidance_scale: Optional[Tuple[float, float]] = None,
+        dtype: torch.dtype = torch.bfloat16,
+        end_of_audio_token: int = 99999,  # Dummy values will disable early termination / guidance features.
+        end_of_text_token: int = 99999,
     ):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,num_hierarchies,t)) and complete
@@ -373,6 +376,9 @@ class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin):
                 speaker_embs=speaker_embs,
                 batch_size=batch_size,
                 guidance_scale=guidance_scale,
+                dtype=dtype,
+                end_of_audio_token=end_of_audio_token,
+                end_of_text_token=end_of_text_token,
             )
 
         else:
@@ -399,5 +405,4 @@ class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin):
                         top_k=top_k,
                     )
                 )
-            return torch.cat(out, dim=0)
             return torch.cat(out, dim=0)
