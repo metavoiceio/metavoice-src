@@ -37,7 +37,7 @@ x-common-settings: &common-settings
       max-file: "10"
 
 services:
-  metavoice-server:
+  server:
     <<: *common-settings
     container_name: metavoice-server
     command: [ "--port=58004" ]
@@ -52,7 +52,7 @@ services:
       interval: 1m
       timeout: 20m
       retries: 20
-  metavoice-ui:
+  ui:
     <<: *common-settings
     container_name: metavoice-ui
     entrypoint: [ "python3.10", "app.py" ]
