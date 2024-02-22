@@ -88,6 +88,11 @@ class TTSRequest:
     top_k: Optional[int] = None
 
 
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 @app.post("/tts", response_class=Response)
 async def text_to_speech(req: Request):
     audiodata = await req.body()
@@ -201,7 +206,7 @@ if __name__ == "__main__":
     # start server
     uvicorn.run(
         app,
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=GlobalState.config.port,
         log_level="info",
     )

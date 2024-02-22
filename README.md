@@ -17,6 +17,18 @@ MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for 
 We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used without restrictions*.
 
 
+## Quickstart - tl;dr
+
+Web UI
+```bash
+docker-compose up -d ui && docker-compose ps && docker-compose logs -f
+```
+
+Server
+```bash
+docker-compose up -d server && docker-compose ps && docker-compose logs -f
+```
+
 ## Installation  
 
 **Pre-requisites:**
