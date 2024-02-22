@@ -19,10 +19,15 @@ We’re releasing MetaVoice-1B under the Apache 2.0 license, *it can be used wit
 
 ## Quickstart - tl;dr
 
+Web UI
 ```bash
-docker-compose up -d && docker-compose ps && docker-compose logs -f
+docker-compose up -d ui && docker-compose ps && docker-compose logs -f
 ```
-Explore exposed [API](http://localhost:8869/docs)!
+
+Server
+```bash
+docker-compose up -d server && docker-compose ps && docker-compose logs -f
+```
 
 ## Installation  
 
