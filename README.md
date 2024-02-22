@@ -70,6 +70,20 @@ python app.py
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
 
+### Dirty faster inference (~2-3x faster)
+
+0. Upgrade to pytorch 2.2.0: `pip install --upgrade torch torchvision torchaudio`
+1. Place voice reference samples in `fam/llm/assets` folder.
+2. Run inference in the following manner:
+```bash
+cd fam/llm
+python -i gptfast_inference.py
+>>> print(inferencer.synthesize("Hello world!", "assets/male.wav"))
+>>> print(inferencer.synthesize("Crazy fast speed coming right at you!", "assets/male.wav"))
+>>> print(inferencer.synthesize("Crazy fast speed coming right at you!", "assets/female.wav"))
+```
+
+
 ## Soon
 - Faster inference ⚡
 - Fine-tuning code
