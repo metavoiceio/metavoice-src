@@ -50,11 +50,9 @@ torch._inductor.config.fx_graph_cache = (
     True  # Experimental feature to reduce compilation times, will be on by default in future
 )
 
-
-import tiktoken
+# imports need to happen after setting above flags
 from gptfast_model import Transformer
 
-from fam.llm.sample import get_cached_embedding
 from fam.quantiser.audio.speaker_encoder.model import SpeakerEncoder
 from fam.quantiser.text.tokenise import TrainedBPETokeniser
 
@@ -258,6 +256,7 @@ def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision):
 
     checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=False)
     state_dict = checkpoint["model"]
+    # convert metavoice-1b model weights naming to gptfast naming
     unwanted_prefix = "_orig_mod."
     for k, v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
@@ -316,6 +315,7 @@ def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision):
 
 def build_model(
     *,
+    precision: torch.dtype,
     checkpoint_path: Path = Path(""),
     spk_emb_ckpt_path: Path = Path(""),
     compile_prefill: bool = False,
@@ -325,7 +325,6 @@ def build_model(
     assert checkpoint_path.is_file(), checkpoint_path
 
     print(f"Using device={device}")
-    precision = torch.bfloat16
 
     print("Loading model ...")
     t0 = time.time()
@@ -379,18 +378,15 @@ def build_model(
 
     print(f"Compilation time: {time.perf_counter() - t0:.2f} seconds")
 
-    return model, tokenizer, smodel, precision, model_size
+    return model, tokenizer, smodel, model_size
 
 
 def main(
     *,
     model,
     tokenizer,
-    smodel,
-    precision,
     model_size,
     prompt: str,
-    spk_ref_path: str,
     guidance_scale: torch.Tensor,
     temperature: torch.Tensor,
     spk_emb: torch.Tensor,

@@ -114,7 +114,6 @@ class Transformer(nn.Module):
         self.norm = RMSNorm(config.dim, eps=config.norm_eps)
         self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
 
-        self.freqs_cis: Optional[Tensor] = None
         self.mask_cache: Optional[Tensor] = None
         self.max_batch_size = -1
         self.max_seq_length = -1
@@ -184,14 +183,6 @@ class Attention(nn.Module):
         self.head_dim = config.head_dim
         self.n_local_heads = config.n_local_heads
         self.dim = config.dim
-        self._register_load_state_dict_pre_hook(self.load_hook)
-
-    def load_hook(self, state_dict, prefix, *args):
-        if prefix + "wq.weight" in state_dict:
-            wq = state_dict.pop(prefix + "wq.weight")
-            wk = state_dict.pop(prefix + "wk.weight")
-            wv = state_dict.pop(prefix + "wv.weight")
-            state_dict[prefix + "wqkv.weight"] = torch.cat([wq, wk, wv])
 
     def forward(
         self,

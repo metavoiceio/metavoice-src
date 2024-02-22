@@ -17,13 +17,16 @@ from fam.llm.sample import (
     get_cached_embedding,
     get_enhancer,
 )
-from fam.llm.utils import check_audio_file, normalize_text
+from fam.llm.utils import check_audio_file, get_default_dtype, normalize_text
 
 
 class Inferencer:
     def __init__(self):
         # NOTE: this needs to come first so that we don't change global state when we want to use
         # the torch.compiled-model.
+        # TODO: check if this works with float16.
+        self._dtype = get_default_dtype()
+        self._device = "cuda"
         self._model_dir = snapshot_download(repo_id="metavoiceio/metavoice-1B-v0.1")
         self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=1024)
         second_stage_ckpt_path = f"{self._model_dir}/second_stage.pt"
@@ -31,8 +34,8 @@ class Inferencer:
             ckpt_path=second_stage_ckpt_path,
             num_samples=1,
             seed=1337,
-            device="cuda",
-            dtype="bfloat16",
+            device=self._device,
+            dtype=self._dtype,
             compile=False,
             init_from="resume",
             output_dir=".",
@@ -43,10 +46,12 @@ class Inferencer:
         )
         self.enhancer = get_enhancer("df")
 
-        self.model, self.tokenizer, self.smodel, self.precision, self.model_size = build_model(
+        self.precision = {"float16": torch.float16, "bfloat16": torch.bfloat16}[self._dtype]
+        self.model, self.tokenizer, self.smodel, self.model_size = build_model(
+            precision=self.precision,
             checkpoint_path=Path(f"{self._model_dir}/first_stage.pt"),
             spk_emb_ckpt_path=Path(f"{self._model_dir}/speaker_encoder.pt"),
-            device="cuda",
+            device=self._device,
             compile=True,
             compile_prefill=True,
         )
@@ -57,25 +62,22 @@ class Inferencer:
         spk_emb = get_cached_embedding(
             spk_ref_path,
             self.smodel,
-        ).to(device="cuda", dtype=self.precision)
+        ).to(device=self._device, dtype=self.precision)
         tokens = main(
             model=self.model,
             tokenizer=self.tokenizer,
-            smodel=self.smodel,
-            precision=self.precision,
             model_size=self.model_size,
             prompt=text,
-            spk_ref_path=spk_ref_path,
             spk_emb=spk_emb,
-            top_p=torch.tensor(top_p, device="cuda", dtype=self.precision),
-            guidance_scale=torch.tensor(guidance_scale, device="cuda", dtype=self.precision),
-            temperature=torch.tensor(temperature, device="cuda", dtype=self.precision),
+            top_p=torch.tensor(top_p, device=self._device, dtype=self.precision),
+            guidance_scale=torch.tensor(guidance_scale, device=self._device, dtype=self.precision),
+            temperature=torch.tensor(temperature, device=self._device, dtype=self.precision),
         )
         text_ids, extracted_audio_ids = self.first_stage_adapter.decode([tokens])
         b_speaker_embs = spk_emb.unsqueeze(0)
         wav_files = self.llm_second_stage(
             texts=[text],
-            encodec_tokens=[torch.tensor(extracted_audio_ids, dtype=torch.int32, device="cuda").unsqueeze(0)],
+            encodec_tokens=[torch.tensor(extracted_audio_ids, dtype=torch.int32, device=self._device).unsqueeze(0)],
             speaker_embs=b_speaker_embs,
             batch_size=1,
             guidance_scale=None,
@@ -93,6 +95,3 @@ class Inferencer:
 
 if __name__ == "__main__":
     inferencer = Inferencer()
-    print(inferencer.synthesize("Hello world!", "assets/male.wav"))
-    print(inferencer.synthesize("Crazy fast speed coming right at you!", "assets/male.wav"))
-    print(inferencer.synthesize("Crazy fast speed coming right at you!", "assets/female.wav"))
