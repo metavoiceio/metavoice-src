@@ -43,14 +43,10 @@ services:
     command: [ "--port=58004" ]
     ports:
       - 58004:58004
-    logging:
-      options:
-        max-size: "100m"
-        max-file: "10"
     healthcheck:
       test: [ "CMD", "curl", "http://metavoice-server:58004/health" ]
       interval: 1m
-      timeout: 20m
+      timeout: 10s
       retries: 20
   ui:
     <<: *common-settings
@@ -59,7 +55,7 @@ services:
     ports:
       - 7861:7861
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:7861" ]
+      test: [ "CMD", "curl", "http://localhost:7861" ]
       interval: 1m
-      timeout: 20m
-      retries: 20
+      timeout: 10s
+      retries: 1
