@@ -71,6 +71,8 @@ python app.py
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
 
 ### Dirty faster inference (~2-3x faster)
+Should be used only when synthesizing multiple utterances OR in server mode. There is high
+startup cost of 20-50 seconds due to torch.compile's of the model.
 
 0. Upgrade to pytorch 2.2.0: `pip install --upgrade torch torchvision torchaudio`
 1. Place voice reference samples in `fam/llm/assets` folder.
