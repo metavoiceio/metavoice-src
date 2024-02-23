@@ -57,8 +57,8 @@ GlobalState = _GlobalState()
 @dataclass(frozen=True)
 class TTSRequest:
     text: str
-    guidance: Optional[Tuple[float, float]] = (3.0, 1.0)
-    top_p: Optional[float] = 0.95
+    guidance: float = 3.0
+    top_p: float = 0.95
     speaker_ref_path: Optional[str] = None
     top_k: Optional[int] = None
 
@@ -96,7 +96,6 @@ async def text_to_speech(req: Request):
                 spk_ref_path=wav_path,
                 top_p=tts_req.top_p,
                 guidance_scale=tts_req.guidance,
-                temperature=tts_req.guidance,
             )
 
         with open(wav_out_path, "rb") as f:

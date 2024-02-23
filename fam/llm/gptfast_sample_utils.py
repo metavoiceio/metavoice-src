@@ -50,7 +50,7 @@ torch._inductor.config.fx_graph_cache = (
 )
 
 # imports need to happen after setting above flags
-from gptfast_model import Transformer
+from fam.llm.gptfast_model import Transformer
 
 from fam.quantiser.audio.speaker_encoder.model import SpeakerEncoder
 from fam.quantiser.text.tokenise import TrainedBPETokeniser
@@ -340,7 +340,7 @@ def build_model(
         model.setup_caches(max_batch_size=2, max_seq_length=model.config.block_size)
 
     if compile:
-        print("compiling!")
+        print("Compiling...")
         global decode_one_token, prefill
         decode_one_token = torch.compile(
             decode_one_token,
