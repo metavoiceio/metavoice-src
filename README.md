@@ -69,6 +69,7 @@ python app.py
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
+4. [Google Collab](https://colab.research.google.com/drive/1UmjE1mzfG4td0rCjJEaAWGQXpn_GuwwY?authuser=0#scrollTo=mPgTfUdBJF1B)
 
 ## Soon
 - Faster inference ⚡
