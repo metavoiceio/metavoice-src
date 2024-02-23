@@ -93,3 +93,7 @@ def get_default_dtype() -> str:
             return "float16" if device_properties.major < 7 else "bfloat16"
 
     return "float16"
+
+
+def get_device() -> str:
+    return "cuda" if torch.cuda.is_available() else "cpu"

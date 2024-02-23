@@ -17,23 +17,32 @@ from fam.llm.sample import (
     get_cached_embedding,
     get_enhancer,
 )
-from fam.llm.utils import check_audio_file, get_default_dtype, normalize_text
+from fam.llm.utils import (
+    check_audio_file,
+    get_default_dtype,
+    get_device,
+    normalize_text,
+)
 
 
-class Inferencer:
-    def __init__(self):
+class TTS:
+    def __init__(self, model_name: str = "metavoiceio/metavoice-1B-v0.1", *, seed: int = 1337):
+        """
+        model_name (str): refers to the model identifier from the Hugging Face Model Hub (https://huggingface.co/metavoiceio)
+        """
+
         # NOTE: this needs to come first so that we don't change global state when we want to use
         # the torch.compiled-model.
-        # TODO: check if this works with float16.
         self._dtype = get_default_dtype()
-        self._device = "cuda"
-        self._model_dir = snapshot_download(repo_id="metavoiceio/metavoice-1B-v0.1")
+        self._device = get_device()
+        self._model_dir = snapshot_download(repo_id=model_name)
         self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=1024)
+
         second_stage_ckpt_path = f"{self._model_dir}/second_stage.pt"
         config_second_stage = InferenceConfig(
             ckpt_path=second_stage_ckpt_path,
             num_samples=1,
-            seed=1337,
+            seed=seed,
             device=self._device,
             dtype=self._dtype,
             compile=False,
@@ -56,13 +65,24 @@ class Inferencer:
             compile_prefill=True,
         )
 
-    def synthesize(self, text, spk_ref_path, top_p=0.95, guidance_scale=3.0, temperature=1.0):
+    def synthesise(self, text: str, spk_ref_path: str, top_p=0.95, guidance_scale=3.0, temperature=1.0) -> str:
+        """
+        text: Text to speak
+        spk_ref_path: Path to speaker reference file. Min. 30s of audio required. Supports both local paths & public URIs. Audio formats: wav, flac & mp3
+        top_p: Top p for sampling applied to first-stage model. Range [0.9, 1.0] are good. This is a measure of speech stability - improves text following for a challenging speaker
+        guidance_scale: Guidance scale [1.0, 3.0] for sampling. This is a measure of speaker similarity - how closely to match speaker identity and speech style.
+        temperature: Temperature for sampling applied to both LLMs (first & second stage)
+
+        returns: path to speech .wav file
+        """
         text = normalize_text(text)
         check_audio_file(spk_ref_path)
         spk_emb = get_cached_embedding(
             spk_ref_path,
             self.smodel,
         ).to(device=self._device, dtype=self.precision)
+
+        # first stage LLM
         tokens = main(
             model=self.model,
             tokenizer=self.tokenizer,
@@ -74,7 +94,10 @@ class Inferencer:
             temperature=torch.tensor(temperature, device=self._device, dtype=self.precision),
         )
         text_ids, extracted_audio_ids = self.first_stage_adapter.decode([tokens])
+
         b_speaker_embs = spk_emb.unsqueeze(0)
+
+        # second stage LLM + multi-band diffusion model
         wav_files = self.llm_second_stage(
             texts=[text],
             encodec_tokens=[torch.tensor(extracted_audio_ids, dtype=torch.int32, device=self._device).unsqueeze(0)],
@@ -86,6 +109,8 @@ class Inferencer:
             temperature=1.0,
             max_new_tokens=None,
         )
+
+        # enhance using deepfilternet
         wav_file = wav_files[0]
         with tempfile.NamedTemporaryFile(suffix=".wav") as enhanced_tmp:
             self.enhancer(str(wav_file) + ".wav", enhanced_tmp.name)
@@ -94,4 +119,4 @@ class Inferencer:
 
 
 if __name__ == "__main__":
-    inferencer = Inferencer()
+    tts = TTS()

@@ -24,7 +24,6 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import itertools
-import sys
 import time
 from pathlib import Path
 from typing import Optional, Tuple
@@ -256,7 +255,7 @@ def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision):
 
     checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=False)
     state_dict = checkpoint["model"]
-    # convert metavoice-1b model weights naming to gptfast naming
+    # convert MetaVoice-1B model weights naming to gptfast naming
     unwanted_prefix = "_orig_mod."
     for k, v in list(state_dict.items()):
         if k.startswith(unwanted_prefix):
