@@ -1,7 +1,9 @@
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
+import librosa
 import torch
 from huggingface_hub import snapshot_download
 
@@ -15,6 +17,7 @@ from fam.llm.inference import (
     TiltedEncodec,
     TrainedBPETokeniser,
     get_cached_embedding,
+    get_cached_file,
     get_enhancer,
 )
 from fam.llm.utils import (
@@ -76,12 +79,14 @@ class TTS:
         returns: path to speech .wav file
         """
         text = normalize_text(text)
+        spk_ref_path = get_cached_file(spk_ref_path)
         check_audio_file(spk_ref_path)
         spk_emb = get_cached_embedding(
             spk_ref_path,
             self.smodel,
         ).to(device=self._device, dtype=self.precision)
 
+        start = time.time()
         # first stage LLM
         tokens = main(
             model=self.model,
@@ -115,6 +120,13 @@ class TTS:
         with tempfile.NamedTemporaryFile(suffix=".wav") as enhanced_tmp:
             self.enhancer(str(wav_file) + ".wav", enhanced_tmp.name)
             shutil.copy2(enhanced_tmp.name, str(wav_file) + ".wav")
+
+        # calculating real-time factor (RTF)
+        end = time.time() - start
+        audio, sr = librosa.load(str(wav_file) + ".wav")
+        duration_s = librosa.get_duration(y=audio, sr=sr)
+        print(f"real-time factor: {end / duration_s:.2f}")
+
         return str(wav_file) + ".wav"
 
 
