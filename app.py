@@ -8,7 +8,7 @@ if project_root not in sys.path:
 
 import gradio as gr
 
-from fam.llm.gptfast_inference import TTS
+from fam.llm.fast_inference import TTS
 from fam.llm.utils import check_audio_file
 
 #### setup model

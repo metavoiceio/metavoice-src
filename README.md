@@ -49,30 +49,26 @@ rm -rf ffmpeg-git-*
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 pip install -r requirements.txt
-
-# Flash Attention works only on latest Nvidia GPUs (Hopper, Ampere & Ada). If you have a different GPU (Tesla or Turing), do not install this.
-pip install flash-attn
-
+pip install --upgrade torch torchaudio # TODO ?
 pip install -e .
 ```
 
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py)
 ```bash
-python fam/llm/sample.py --spk_cond_path="assets/bria.mp3" --text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model."
+python fam/llm/inference.py --spk_cond_path="assets/bria.mp3" --text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model."
 ```
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py) or [web UI](/fam/ui/app.py)
 ```bash
-python fam/llm/serving.py
+python serving.py
 python app.py 
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
 
 ### Dirty faster inference (~2-3x faster)
-Should be used only when synthesizing multiple utterances OR in server mode. There is high
-startup cost of 20-50 seconds due to torch.compile's of the model.
+
 
 0. Upgrade to pytorch 2.2.0: `pip install --upgrade torch torchvision torchaudio`
 1. Place voice reference samples in `fam/llm/assets` folder.
@@ -86,8 +82,8 @@ python -i gptfast_inference.py
 ```
 
 
-## Soon
-- Faster inference ⚡
+## Roadmap
+- [x] Faster inference ⚡
 - Fine-tuning code
 - Synthesis of arbitrary length text
 

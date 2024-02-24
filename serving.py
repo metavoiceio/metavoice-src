@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 import fastapi
 import fastapi.middleware.cors
@@ -15,7 +15,7 @@ from attr import dataclass
 from fastapi import Request
 from fastapi.responses import Response
 
-from fam.llm.gptfast_inference import TTS
+from fam.llm.fast_inference import TTS
 from fam.llm.utils import check_audio_file
 
 logger = logging.getLogger(__name__)
@@ -30,14 +30,8 @@ class ServingConfig:
     huggingface_repo_id: str = "metavoiceio/metavoice-1B-v0.1"
     """Absolute path to the model directory."""
 
-    max_new_tokens: int = 864 * 2
-    """Maximum number of new tokens to generate from the first stage model."""
-
     temperature: float = 1.0
     """Temperature for sampling applied to both models."""
-
-    top_k: int = 200
-    """Top k for sampling applied to both models."""
 
     seed: int = 1337
     """Random seed for sampling."""
@@ -57,9 +51,9 @@ GlobalState = _GlobalState()
 @dataclass(frozen=True)
 class TTSRequest:
     text: str
+    speaker_ref_path: Optional[str] = None
     guidance: float = 3.0
     top_p: float = 0.95
-    speaker_ref_path: Optional[str] = None
     top_k: Optional[int] = None
 
 
@@ -127,9 +121,6 @@ def _convert_audiodata_to_wav_path(audiodata, wav_tmp):
 
 
 if __name__ == "__main__":
-    # This has to be here to avoid some weird audiocraft shenaningans messing up matplotlib
-    from fam.llm.enhancers import get_enhancer
-
     for name in logging.root.manager.loggerDict:
         logger = logging.getLogger(name)
         logger.setLevel(logging.INFO)

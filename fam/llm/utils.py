@@ -75,24 +75,17 @@ def check_audio_file(path_or_uri, threshold_s=30):
         os.remove(filepath)
 
 
-def get_default_use_kv_cache() -> str:
-    """Compute default value for 'use_kv_cache' based on GPU architecture"""
-    if torch.cuda.is_available():
-        for i in range(torch.cuda.device_count()):
-            device_properties = torch.cuda.get_device_properties(i)
-            return "vanilla" if "Turing" or "Tesla" in device_properties else "flash_decoding"
-    else:
-        return "vanilla"
-
-
 def get_default_dtype() -> str:
     """Compute default 'dtype' based on GPU architecture"""
     if torch.cuda.is_available():
         for i in range(torch.cuda.device_count()):
             device_properties = torch.cuda.get_device_properties(i)
-            return "float16" if device_properties.major < 7 else "bfloat16"
+            dtype = "float16" if device_properties.major < 7 else "bfloat16"  # tesla and turing architectures
+    else:
+        dtype = "float16"
 
-    return "float16"
+    print(f"using dtype={dtype}")
+    return dtype
 
 
 def get_device() -> str:

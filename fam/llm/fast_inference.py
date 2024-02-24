@@ -7,8 +7,8 @@ from huggingface_hub import snapshot_download
 
 from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
 from fam.llm.decoders import EncodecDecoder
-from fam.llm.gptfast_sample_utils import build_model, main
-from fam.llm.sample import (
+from fam.llm.fast_inference_utils import build_model, main
+from fam.llm.inference import (
     EncodecDecoder,
     InferenceConfig,
     Model,

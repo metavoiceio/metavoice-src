@@ -33,6 +33,8 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import functional as F
 
+from fam.llm.utils import get_default_dtype
+
 
 def find_multiple(n: int, *args: Tuple[int]) -> int:
     k = reduce(lambda x, y: x * y // gcd(x, y), args + (1,))
@@ -53,6 +55,7 @@ class ModelArgs:
     n_local_heads: int = -1
     head_dim: int = 64
     norm_eps: float = 1e-5
+    dtype: torch.dtype = torch.bfloat16
 
     def __post_init__(self):
         if self.n_local_heads == -1:
@@ -62,6 +65,8 @@ class ModelArgs:
             n_hidden = int(2 * hidden_dim / 3)
             self.intermediate_size = find_multiple(n_hidden, 256)
         self.head_dim = self.dim // self.n_head
+
+        self.dtype = {"float16": torch.float16, "bfloat16": torch.bfloat16}[get_default_dtype()]
 
     @classmethod
     def from_name(cls, name: str):
@@ -84,7 +89,7 @@ transformer_configs = {
 
 
 class KVCache(nn.Module):
-    def __init__(self, max_batch_size, max_seq_length, n_heads, head_dim, dtype=torch.bfloat16):
+    def __init__(self, max_batch_size, max_seq_length, n_heads, head_dim, dtype):
         super().__init__()
         cache_shape = (max_batch_size, n_heads, max_seq_length, head_dim)
         self.register_buffer("k_cache", torch.zeros(cache_shape, dtype=dtype))
@@ -130,7 +135,9 @@ class Transformer(nn.Module):
         self.max_seq_length = max_seq_length
         self.max_batch_size = max_batch_size
         for b in self.layers:
-            b.attention.kv_cache = KVCache(max_batch_size, max_seq_length, self.config.n_local_heads, head_dim)
+            b.attention.kv_cache = KVCache(
+                max_batch_size, max_seq_length, self.config.n_local_heads, head_dim, dtype=self.config.dtype
+            )
 
         self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
 

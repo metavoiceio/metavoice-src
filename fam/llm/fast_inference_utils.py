@@ -50,8 +50,7 @@ torch._inductor.config.fx_graph_cache = (
 )
 
 # imports need to happen after setting above flags
-from fam.llm.gptfast_model import Transformer
-
+from fam.llm.fast_model import Transformer
 from fam.quantiser.audio.speaker_encoder.model import SpeakerEncoder
 from fam.quantiser.text.tokenise import TrainedBPETokeniser
 
