@@ -35,6 +35,12 @@ from torch.nn import functional as F
 
 from fam.llm.utils import get_default_dtype
 
+import logging
+
+# Adjust the logging level
+logger = logging.getLogger("torch")
+logger.setLevel(logging.ERROR)
+
 
 def find_multiple(n: int, *args: Tuple[int]) -> int:
     k = reduce(lambda x, y: x * y // gcd(x, y), args + (1,))

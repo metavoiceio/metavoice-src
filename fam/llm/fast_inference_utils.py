@@ -339,7 +339,7 @@ def build_model(
         model.setup_caches(max_batch_size=2, max_seq_length=model.config.block_size)
 
     if compile:
-        print("Compiling...")
+        print("Compiling...Can take up to 2 mins.")
         global decode_one_token, prefill
         decode_one_token = torch.compile(
             decode_one_token,
