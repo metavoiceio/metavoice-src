@@ -1,3 +1,4 @@
+import os
 import shutil
 import tempfile
 import time
@@ -29,7 +30,9 @@ from fam.llm.utils import (
 
 
 class TTS:
-    def __init__(self, model_name: str = "metavoiceio/metavoice-1B-v0.1", *, seed: int = 1337):
+    def __init__(
+        self, model_name: str = "metavoiceio/metavoice-1B-v0.1", *, seed: int = 1337, output_dir: str = "outputs"
+    ):
         """
         model_name (str): refers to the model identifier from the Hugging Face Model Hub (https://huggingface.co/metavoiceio)
         """
@@ -40,6 +43,8 @@ class TTS:
         self._device = get_device()
         self._model_dir = snapshot_download(repo_id=model_name)
         self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=1024)
+        self.output_dir = output_dir
+        os.makedirs(self.output_dir, exist_ok=True)
 
         second_stage_ckpt_path = f"{self._model_dir}/second_stage.pt"
         config_second_stage = InferenceConfig(
@@ -50,7 +55,7 @@ class TTS:
             dtype=self._dtype,
             compile=False,
             init_from="resume",
-            output_dir=".",
+            output_dir=self.output_dir,
         )
         data_adapter_second_stage = TiltedEncodec(end_of_audio_token=1024)
         self.llm_second_stage = Model(
