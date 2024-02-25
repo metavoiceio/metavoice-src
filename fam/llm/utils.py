@@ -80,7 +80,7 @@ def get_default_dtype() -> str:
     if torch.cuda.is_available():
         for i in range(torch.cuda.device_count()):
             device_properties = torch.cuda.get_device_properties(i)
-            dtype = "float16" if device_properties.major < 7 else "bfloat16"  # tesla and turing architectures
+            dtype = "float16" if device_properties.major <= 7 else "bfloat16"  # tesla and turing architectures
     else:
         dtype = "float16"
 
