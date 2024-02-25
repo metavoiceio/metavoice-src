@@ -1,3 +1,7 @@
+"""
+Command: python fam/llm/inference.py --spk_cond_path="assets/bria.mp3" --text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model."
+"""
+
 import dataclasses
 import hashlib
 import json

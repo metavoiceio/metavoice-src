@@ -49,17 +49,21 @@ rm -rf ffmpeg-git-*
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 pip install -r requirements.txt
-pip install --upgrade torch torchaudio # TODO ?
+pip install --upgrade torch torchaudio  # for torch.compile improvements
 pip install -e .
 ```
 
 ## Usage
-1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/sample.py)
+1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/fast_inference.py)
 ```bash
-python fam/llm/inference.py --spk_cond_path="assets/bria.mp3" --text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model."
-```
+python -i fam/llm/fast_inference.py 
 
-2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](/fam/llm/serving.py) or [web UI](/fam/ui/app.py)
+# Run e.g. of API usage within the interactive python session
+tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model.", spk_ref_path="assets/bria.mp3")
+```
+> Note: The script takes 30-90s to startup (depending on hardware). This is because we torch.compile the model for fast inference. Once compiled, the synthesise() API runs faster than real-time, with Real-Time Factor (RTF) < 1.0
+
+2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](serving.py) or [web UI](app.py)
 ```bash
 python serving.py
 python app.py 
@@ -67,27 +71,12 @@ python app.py
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
 
-### Dirty faster inference (~2-3x faster)
 
-
-0. Upgrade to pytorch 2.2.0: `pip install --upgrade torch torchvision torchaudio`
-1. Place voice reference samples in `fam/llm/assets` folder.
-2. Run inference in the following manner:
-```bash
-cd fam/llm
-python -i gptfast_inference.py
->>> print(inferencer.synthesize("Hello world!", "assets/male.wav"))
->>> print(inferencer.synthesize("Crazy fast speed coming right at you!", "assets/male.wav"))
->>> print(inferencer.synthesize("Crazy fast speed coming right at you!", "assets/female.wav"))
-tts.synthesise("This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model by MetaVoice. How did you find us?", "/home/ubuntu/metavoice-src/assets/bria.mp3")
-tts.synthesise("Crazy fast speed coming right at you!", "/home/ubuntu/metavoice-src/assets/bria.mp3")
-```
-
-
-## Roadmap
+## Upcoming
 - [x] Faster inference ⚡
-- Fine-tuning code
-- Synthesis of arbitrary length text
+- [ ] Fine-tuning code
+- [ ] Synthesis of arbitrary length text
+
 
 ## Architecture
 We predict EnCodec tokens from text, and speaker information. This is then diffused up to the waveform level, with post-processing applied to clean up the audio.
