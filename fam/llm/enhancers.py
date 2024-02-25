@@ -97,6 +97,12 @@ def get_enhancer(enhancer_name: Literal["df"]) -> BaseEnhancer:
     """
 
     if enhancer_name == "df":
+        import warnings
+
+        warnings.filterwarnings(
+            "ignore",
+            message='"sinc_interpolation" resampling method name is being deprecated and replaced by "sinc_interp_hann" in the next release. The default behavior remains unchanged.',
+        )
         return DFEnhancer()
     else:
         raise ValueError(f"Unknown enhancer name: {enhancer_name}")

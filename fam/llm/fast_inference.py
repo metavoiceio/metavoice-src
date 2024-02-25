@@ -125,13 +125,14 @@ class TTS:
         with tempfile.NamedTemporaryFile(suffix=".wav") as enhanced_tmp:
             self.enhancer(str(wav_file) + ".wav", enhanced_tmp.name)
             shutil.copy2(enhanced_tmp.name, str(wav_file) + ".wav")
+            print(f"\nSaved audio to {wav_file}.wav")
 
         # calculating real-time factor (RTF)
         time_to_synth_s = time.time() - start
         audio, sr = librosa.load(str(wav_file) + ".wav")
         duration_s = librosa.get_duration(y=audio, sr=sr)
-        print(f"time_to_synth_s: {time_to_synth_s}")
-        print(f"real-time factor: {time_to_synth_s / duration_s:.2f}")
+        print(f"\nTotal time to synth (s): {time_to_synth_s}")
+        print(f"Real-time factor: {time_to_synth_s / duration_s:.2f}")
 
         return str(wav_file) + ".wav"
 

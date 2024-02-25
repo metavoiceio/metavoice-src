@@ -424,12 +424,9 @@ def main(
     tokens_generated = y.size(0) - prompt_length
     tokens_sec = tokens_generated / t
     aggregate_metrics["tokens_per_sec"].append(tokens_sec)
-    print(f"Time for inference: {t:.02f} sec total, {tokens_sec:.02f} tokens/sec")
+    print(f"Time for 1st stage LLM inference: {t:.02f} sec total, {tokens_sec:.02f} tokens/sec")
     print(f"Bandwidth achieved: {model_size * tokens_sec / 1e9:.02f} GB/s")
-
-    print("==========")
-
-    print(f"Average tokens/sec: {torch.mean(torch.tensor(aggregate_metrics['tokens_per_sec'])).item():.2f}")
-    print(f"Memory used: {torch.cuda.max_memory_reserved() / 1e9:.02f} GB")
+    # print(f"Average tokens/sec: {torch.mean(torch.tensor(aggregate_metrics['tokens_per_sec'])).item():.2f}")
+    print(f"Memory used: {torch.cuda.max_memory_reserved() / 1e9:.02f} GB\n")
 
     return y.tolist()
