@@ -42,7 +42,7 @@ class GPTConfig:
     rmsnorm_eps: Optional[float] = None  # only used for rmsnorm
     nonlinearity_type: str = "gelu"  # "gelu" or "swiglu"
     swiglu_multiple_of: Optional[int] = None  # MLP hidden layer (using SwiGLU) will be multiple of this
-    attn_kernel_type: Literal["fd", "torch_attn"] = "torch_attn"
+    attn_kernel_type: Literal["torch_attn"] = "torch_attn"
     kv_cache_enabled: bool = False  # whether to use key-value cache for attention
 
 
@@ -395,7 +395,7 @@ class GPT(nn.Module, NonCausalInferenceMixin, CausalInferenceMixin):
                 raise Exception("top_p is not supported for non-causal sampling")
 
             out = []
-            for start_index in tqdm.tqdm(range(0, idx.shape[0], batch_size), desc="non-causal batching"):
+            for start_index in tqdm.tqdm(range(0, idx.shape[0], batch_size), desc="Non-causal batching"):
                 end_index = min(start_index + batch_size, idx.shape[0])
                 out.append(
                     self._non_causal_sample(

@@ -68,7 +68,7 @@ class EncodecDecoder(Decoder):
         # TODO: this has strange behaviour -- if causal is True, it returns tokens. if causal is False, it SAVES the audio file.
         text_ids, extracted_audio_ids = self._data_adapter_fn(tokens)
         text = self.tokeniser_decode_fn(text_ids)
-        print(f"Text: {text}")
+        # print(f"Text: {text}")
 
         tokens = torch.tensor(extracted_audio_ids, device="cuda").unsqueeze(0)
 
@@ -92,11 +92,10 @@ class EncodecDecoder(Decoder):
         try:
             wav_file_name = self.output_dir / f"synth_{text.replace(' ', '_')[:25]}_{uuid.uuid4()}"
             self._save_audio(wav_file_name, wav)
-            print(f"\nSaved audio to {wav_file_name}.wav")
             return wav_file_name
         except Exception as e:
             print(f"Failed to save audio! Reason: {e}")
+
             wav_file_name = self.output_dir / f"synth_{uuid.uuid4()}"
             self._save_audio(wav_file_name, wav)
-            print(f"\nSaved audio to {wav_file_name}.wav")
             return wav_file_name

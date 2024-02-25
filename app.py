@@ -7,58 +7,12 @@ if project_root not in sys.path:
 
 
 import gradio as gr
-from huggingface_hub import snapshot_download
 
-from fam.llm.sample import (
-    InferenceConfig,
-    SamplingControllerConfig,
-    build_models,
-    get_first_stage_path,
-    get_second_stage_path,
-    sample_utterance,
-)
+from fam.llm.fast_inference import TTS
 from fam.llm.utils import check_audio_file
 
 #### setup model
-sampling_config = SamplingControllerConfig(
-    huggingface_repo_id="metavoiceio/metavoice-1B-v0.1", spk_cond_path=""
-)  # spk_cond_path added later
-model_dir = snapshot_download(repo_id=sampling_config.huggingface_repo_id)
-first_stage_ckpt_path = get_first_stage_path(model_dir)
-second_stage_ckpt_path = get_second_stage_path(model_dir)
-
-config_first_stage = InferenceConfig(
-    ckpt_path=first_stage_ckpt_path,
-    num_samples=sampling_config.num_samples,
-    seed=sampling_config.seed,
-    device=sampling_config.device,
-    dtype=sampling_config.dtype,
-    compile=sampling_config.compile,
-    init_from=sampling_config.init_from,
-    output_dir=sampling_config.output_dir,
-)
-
-config_second_stage = InferenceConfig(
-    ckpt_path=second_stage_ckpt_path,
-    num_samples=sampling_config.num_samples,
-    seed=sampling_config.seed,
-    device=sampling_config.device,
-    dtype=sampling_config.dtype,
-    compile=sampling_config.compile,
-    init_from=sampling_config.init_from,
-    output_dir=sampling_config.output_dir,
-)
-
-sampling_config.max_new_tokens *= 2  # deal with max_new_tokens for flattened interleaving!
-
-# define models
-smodel, llm_first_stage, llm_second_stage = build_models(
-    config_first_stage,
-    config_second_stage,
-    model_dir=model_dir,
-    device=sampling_config.device,
-    use_kv_cache=sampling_config.use_kv_cache,
-)
+TTS_MODEL = TTS()
 
 #### setup interface
 RADIO_CHOICES = ["Preset voices", "Upload target voice (atleast 30s)"]
@@ -115,20 +69,12 @@ def tts(to_say, top_p, guidance, toggle, preset_dropdown, upload_target):
         _handle_edge_cases(to_say, upload_target)
 
         to_say = to_say if len(to_say) < MAX_CHARS else to_say[:MAX_CHARS]
-        return sample_utterance(
-            to_say,
-            spk_cond_path=PRESET_VOICES[preset_dropdown] if toggle == RADIO_CHOICES[0] else upload_target,
-            spkemb_model=smodel,
-            first_stage_model=llm_first_stage,
-            second_stage_model=llm_second_stage,
-            enhancer=sampling_config.enhancer,
-            guidance_scale=(d_guidance, 1.0),
-            max_new_tokens=sampling_config.max_new_tokens,
-            temperature=sampling_config.temperature,
-            top_k=sampling_config.top_k,
+
+        return TTS_MODEL.synthesise(
+            text=to_say,
+            spk_ref_path=PRESET_VOICES[preset_dropdown] if toggle == RADIO_CHOICES[0] else upload_target,
             top_p=d_top_p,
-            first_stage_ckpt_path=None,
-            second_stage_ckpt_path=None,
+            guidance_scale=d_guidance,
         )
     except Exception as e:
         raise gr.Error(f"Something went wrong. Reason: {str(e)}")

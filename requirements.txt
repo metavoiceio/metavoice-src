@@ -1,5 +1,4 @@
-torch>=2.1.0
-transformers
+torch>=2.1.0  # required to install audiocraft
 librosa
 tqdm
 tiktoken==0.5.1

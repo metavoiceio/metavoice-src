@@ -1,3 +1,7 @@
+"""
+Command: python fam/llm/inference.py --spk_cond_path="assets/bria.mp3" --text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model."
+"""
+
 import dataclasses
 import hashlib
 import json
@@ -6,6 +10,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import List, Literal, Optional, Tuple, Type, Union
@@ -20,12 +25,7 @@ from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook, TiltedEncodec
 from fam.llm.decoders import Decoder, EncodecDecoder
 from fam.llm.enhancers import BaseEnhancer, get_enhancer
 from fam.llm.model import GPT, GPTConfig
-from fam.llm.utils import (
-    check_audio_file,
-    get_default_dtype,
-    get_default_use_kv_cache,
-    normalize_text,
-)
+from fam.llm.utils import check_audio_file, get_default_dtype, normalize_text
 from fam.quantiser.audio.speaker_encoder.model import SpeakerEncoder
 from fam.quantiser.text.tokenise import TrainedBPETokeniser
 
@@ -57,7 +57,7 @@ class Model:
         tokenizer_cls: Type[TrainedBPETokeniser],
         decoder_cls: Type[Decoder],
         data_adapter_fn,
-        use_kv_cache: Optional[Literal["flash_decoding", "vanilla"]] = None,
+        use_kv_cache: Optional[Literal["vanilla"]] = None,
     ):
         # TODO: disentangle the encodec stuff and numbers etc with rest of this code (esp at encoder-only / second stage model inference)
         # TODO: remove magic number
@@ -150,11 +150,7 @@ class Model:
             if "causal" in self.checkpoint_config and self.checkpoint_config["causal"] is False:
                 raise Exception("kv_cache not supported for non-causal models!")
 
-            if self.use_kv_cache == "flash_decoding":
-                self.model.enable_kv_cache()
-                for block in self.model.transformer.h:
-                    block.attn.attn_kernel_type = "fd"
-            elif self.use_kv_cache == "vanilla":
+            if self.use_kv_cache == "vanilla":
                 self.model.enable_kv_cache()
             else:
                 raise NotImplementedError(f"kv_cache type {self.use_kv_cache} not implemented!")
@@ -471,6 +467,8 @@ def _sample_utterance_batch(
         speaker_embs.append(get_cached_embedding(spk_cond_path, spkemb_model) if spk_cond_path else None)
 
     b_speaker_embs = torch.cat(speaker_embs, dim=0)
+
+    start = time.time()
     b_tokens = first_stage_model(
         texts=texts,
         speaker_embs=b_speaker_embs,
@@ -514,6 +512,8 @@ def _sample_utterance_batch(
                 first_stage_ckpt_path,
                 second_stage_ckpt_path,
             )
+
+    print(f"time_to_synth_s: {time.time() - start}")
     return [str(w) + ".wav" if not str(w).endswith(".wav") else str(w) for w in wav_files]
 
 
@@ -637,9 +637,8 @@ class SamplingControllerConfig:
     init_from: str = "resume"
     """Either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')."""
 
-    use_kv_cache: Optional[Literal["flash_decoding", "vanilla"]] = get_default_use_kv_cache()
-    """Type of kv caching to use for inference: 1) [none] no kv caching, 2) [flash_decoding] use the 
-    flash decoding kernel, 3) [vanilla] use torch attention with hand implemented kv-cache."""
+    use_kv_cache: Optional[Literal["vanilla"]] = "vanilla"
+    """Type of kv caching to use for inference: 1) [none] no kv caching, 2) [vanilla] use torch attention with hand implemented kv-cache."""
 
     output_dir: str = "samples/"
     """Relative path to output directory"""
