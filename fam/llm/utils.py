@@ -43,7 +43,7 @@ def normalize_text(text: str) -> str:
     non_bpe_chars = set([c for c in list(text) if ord(c) >= 256])
     if len(non_bpe_chars) > 0:
         non_bpe_points = [(c, ord(c)) for c in non_bpe_chars]
-        raise ValueError(f"Non-BPE single token characters found: {non_bpe_points}")
+        raise ValueError(f"Non-supported character found: {non_bpe_points}")
 
     text = text.replace("\t", " ")
     text = text.replace("\n", " ")
