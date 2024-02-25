@@ -62,6 +62,7 @@ python -i fam/llm/fast_inference.py
 tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model.", spk_ref_path="assets/bria.mp3")
 ```
 > Note: The script takes 30-90s to startup (depending on hardware). This is because we torch.compile the model for fast inference.
+
 > On Ampere, Ada-Lovelace, and Hopper architecture GPUs, once compiled, the synthesise() API runs faster than real-time, with a Real-Time Factor (RTF) < 1.0.
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](serving.py) or [web UI](app.py)
