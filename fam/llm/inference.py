@@ -6,6 +6,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import List, Literal, Optional, Tuple, Type, Union
@@ -462,6 +463,8 @@ def _sample_utterance_batch(
         speaker_embs.append(get_cached_embedding(spk_cond_path, spkemb_model) if spk_cond_path else None)
 
     b_speaker_embs = torch.cat(speaker_embs, dim=0)
+
+    start = time.time()
     b_tokens = first_stage_model(
         texts=texts,
         speaker_embs=b_speaker_embs,
@@ -505,6 +508,8 @@ def _sample_utterance_batch(
                 first_stage_ckpt_path,
                 second_stage_ckpt_path,
             )
+
+    print(f"time_to_synth_s: {time.time() - start}")
     return [str(w) + ".wav" if not str(w).endswith(".wav") else str(w) for w in wav_files]
 
 

@@ -122,10 +122,11 @@ class TTS:
             shutil.copy2(enhanced_tmp.name, str(wav_file) + ".wav")
 
         # calculating real-time factor (RTF)
-        end = time.time() - start
+        time_to_synth_s = time.time() - start
         audio, sr = librosa.load(str(wav_file) + ".wav")
         duration_s = librosa.get_duration(y=audio, sr=sr)
-        print(f"real-time factor: {end / duration_s:.2f}")
+        print(f"time_to_synth_s: {time_to_synth_s}")
+        print(f"real-time factor: {time_to_synth_s / duration_s:.2f}")
 
         return str(wav_file) + ".wav"
 

@@ -79,6 +79,8 @@ python -i gptfast_inference.py
 >>> print(inferencer.synthesize("Hello world!", "assets/male.wav"))
 >>> print(inferencer.synthesize("Crazy fast speed coming right at you!", "assets/male.wav"))
 >>> print(inferencer.synthesize("Crazy fast speed coming right at you!", "assets/female.wav"))
+tts.synthesise("This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model by MetaVoice. How did you find us?", "/home/ubuntu/metavoice-src/assets/bria.mp3")
+tts.synthesise("Crazy fast speed coming right at you!", "/home/ubuntu/metavoice-src/assets/bria.mp3")
 ```
 
 
