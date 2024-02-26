@@ -112,9 +112,9 @@ class Model:
                 self.checkpoint_config = checkpoint["config"]
 
                 self.meta = checkpoint["meta"]
-                load_meta = True
+                self.load_meta = True
 
-            if load_meta:
+            if self.load_meta:
                 self.use_bpe_tokenizer = "stoi" not in self.meta or "itos" not in self.meta
                 self.speaker_cond = self.meta.get("speaker_cond")
 
