@@ -90,13 +90,12 @@ class SpeakerEncoder(nn.Module):
 
         mel = audio.wav_to_mel_spectrogram(wav)
         mels = np.array([mel[s] for s in mel_slices])
+        mels = torch.from_numpy(mels).to(self.device)  # type: ignore
         with torch.no_grad():
-            mels = torch.from_numpy(mels).to(self.device)  # type: ignore
             partial_embeds = self(mels)
 
         if numpy:
-            partial_embeds = partial_embeds.cpu().numpy()
-            raw_embed = np.mean(partial_embeds, axis=0)
+            raw_embed = np.mean(partial_embeds.cpu().numpy(), axis=0)
             embed = raw_embed / np.linalg.norm(raw_embed, 2)
         else:
             raw_embed = partial_embeds.mean(dim=0)
@@ -111,7 +110,7 @@ class SpeakerEncoder(nn.Module):
         return raw_embed / np.linalg.norm(raw_embed, 2)
 
     def embed_utterance_from_file(self, fpath: str, numpy: bool) -> torch.Tensor:
-        wav_tgt, _ = librosa.load(fpath, sr=16000)
+        wav_tgt, _ = librosa.load(fpath, sr=sampling_rate)
         wav_tgt, _ = librosa.effects.trim(wav_tgt, top_db=20)
 
         embedding = self.embed_utterance(wav_tgt, numpy=numpy)
