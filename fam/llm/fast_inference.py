@@ -30,6 +30,8 @@ from fam.llm.utils import (
 
 
 class TTS:
+    END_OF_AUDIO_TOKEN = 1024
+
     def __init__(
         self, model_name: str = "metavoiceio/metavoice-1B-v0.1", *, seed: int = 1337, output_dir: str = "outputs"
     ):
@@ -42,7 +44,7 @@ class TTS:
         self._dtype = get_default_dtype()
         self._device = get_device()
         self._model_dir = snapshot_download(repo_id=model_name)
-        self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=1024)
+        self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=self.END_OF_AUDIO_TOKEN)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -57,7 +59,7 @@ class TTS:
             init_from="resume",
             output_dir=self.output_dir,
         )
-        data_adapter_second_stage = TiltedEncodec(end_of_audio_token=1024)
+        data_adapter_second_stage = TiltedEncodec(end_of_audio_token=self.END_OF_AUDIO_TOKEN)
         self.llm_second_stage = Model(
             config_second_stage, TrainedBPETokeniser, EncodecDecoder, data_adapter_fn=data_adapter_second_stage.decode
         )
@@ -103,7 +105,7 @@ class TTS:
             guidance_scale=torch.tensor(guidance_scale, device=self._device, dtype=self.precision),
             temperature=torch.tensor(temperature, device=self._device, dtype=self.precision),
         )
-        text_ids, extracted_audio_ids = self.first_stage_adapter.decode([tokens])
+        _, extracted_audio_ids = self.first_stage_adapter.decode([tokens])
 
         b_speaker_embs = spk_emb.unsqueeze(0)
 

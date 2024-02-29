@@ -2,7 +2,7 @@
 
 
 <p>
-<a href="https://ttsdemo.themetavoice.xyz/"><b>Playground</b></a> | <a target="_blank" style="display: inline-block; vertical-align: middle" href="https://colab.research.google.com/drive/1UmjE1mzfG4td0rCjJEaAWGQXpn_GuwwY?authuser=0#scrollTo=mPgTfUdBJF1B">
+<a href="https://ttsdemo.themetavoice.xyz/"><b>Playground</b></a> | <a target="_blank" style="display: inline-block; vertical-align: middle" href="https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a> 
 </p>
@@ -72,7 +72,7 @@ python app.py
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
-4. [Google Collab](https://colab.research.google.com/drive/1UmjE1mzfG4td0rCjJEaAWGQXpn_GuwwY?authuser=0#scrollTo=mPgTfUdBJF1B)
+4. [Google Collab Demo](https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb)
 
 
 ## Upcoming
