@@ -103,3 +103,9 @@ The model supports:
 
 ## Acknowledgements
 We are grateful to Together.ai for their 24/7 help in marshalling our cluster. We thank the teams of AWS, GCP & Hugging Face for support with their cloud platforms.
+
+- [A Défossez et. al.](https://arxiv.org/abs/2210.13438) for Encodec.
+- [RS Roman et. al.](https://arxiv.org/abs/2308.02560) for Multiband Diffusion.
+- [@liusongxiang](https://github.com/liusongxiang/ppg-vc/blob/main/speaker_encoder/inference.py) for speaker encoder implementation.
+- [@karpathy](https://github.com/karpathy/nanoGPT) for NanoGPT which our inference implementation is based on.
+- [@Rikorose](https://github.com/Rikorose) for DeepFilterNet.
