@@ -109,3 +109,5 @@ We are grateful to Together.ai for their 24/7 help in marshalling our cluster. W
 - [@liusongxiang](https://github.com/liusongxiang/ppg-vc/blob/main/speaker_encoder/inference.py) for speaker encoder implementation.
 - [@karpathy](https://github.com/karpathy/nanoGPT) for NanoGPT which our inference implementation is based on.
 - [@Rikorose](https://github.com/Rikorose) for DeepFilterNet.
+
+Apologies in advance if we've missed anyone out. Please let us know if we have.
