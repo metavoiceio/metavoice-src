@@ -7,9 +7,11 @@ from typing import Callable, Optional, Union
 import julius
 import torch
 from audiocraft.data.audio import audio_read, audio_write
-from audiocraft.models import MultiBandDiffusion  # type: ignore
+from audiocraft.solvers.compression import CompressionSolver  # type: ignore
 
-mbd = MultiBandDiffusion.get_mbd_24khz(bw=6)  # 1.5
+encodec = CompressionSolver.model_from_checkpoint("//pretrained/facebook/encodec_24khz", device="cuda")
+encodec.set_num_codebooks(8)
+encodec = encodec.to("cuda")
 
 
 class Decoder(ABC):
@@ -28,7 +30,6 @@ class EncodecDecoder(Decoder):
         self._mbd_sample_rate = 24_000
         self._end_of_audio_token = 1024
         self._num_codebooks = 8
-        self.mbd = mbd
 
         self.tokeniser_decode_fn = tokeniser_decode_fn
         self._data_adapter_fn = data_adapter_fn
@@ -44,23 +45,6 @@ class EncodecDecoder(Decoder):
             strategy="loudness",
             loudness_compressor=True,
         )
-
-    def get_tokens(self, audio_path: str) -> list[list[int]]:
-        """
-        Utility method to get tokens from audio. Useful when you want to test reconstruction in some form (e.g.
-        limited codebook reconstruction or sampling from second stage model only).
-        """
-        pass
-        wav, sr = audio_read(audio_path)
-        if sr != self._mbd_sample_rate:
-            wav = julius.resample_frac(wav, sr, self._mbd_sample_rate)
-        if wav.ndim == 2:
-            wav = wav.unsqueeze(1)
-        wav = wav.to("cuda")
-        tokens = self.mbd.codec_model.encode(wav)
-        tokens = tokens[0][0]
-
-        return tokens.tolist()
 
     def decode(
         self, tokens: list[list[int]], causal: bool = True, ref_audio_path: Optional[str] = None
@@ -81,7 +65,7 @@ class EncodecDecoder(Decoder):
             return tokens
         else:
             with torch.amp.autocast(device_type="cuda", dtype=torch.float32):
-                wav = self.mbd.tokens_to_wav(tokens)
+                wav = encodec.decode(tokens)
             # NOTE: we couldn't just return wav here as it goes through loudness compression etc :)
 
         if wav.shape[-1] < 9600:
