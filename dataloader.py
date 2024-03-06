@@ -2,17 +2,20 @@ import pathlib
 
 import julius
 import torch
+import typing as tp
 from audiocraft.data.audio import audio_read
 from encodec import EncodecModel
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional as F
+from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
 
 from fam.llm.fast_inference_utils import encode_tokens
 from fam.llm.inference import SpeakerEncoder, TrainedBPETokeniser, get_cached_embedding
 from fam.llm.utils import normalize_text
 
 MBD_SAMPLE_RATE = 24000
+END_OF_AUDIO_TOKEN = 1024
 
 class MetavoiceDataset(Dataset):
     def __init__(self, dataset_dir: str, encodec_model: EncodecModel, tokenizer: TrainedBPETokeniser, spkemb_model: SpeakerEncoder, device: str):
@@ -22,6 +25,8 @@ class MetavoiceDataset(Dataset):
         self.tokenizer = tokenizer
         self.spkemb_model = spkemb_model
         self.device = device
+
+        self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=END_OF_AUDIO_TOKEN)
 
         # Loop through dataset_dir and create a list of tuples (wav_path, text)
         # File system will look like:
@@ -79,19 +84,31 @@ class MetavoiceDataset(Dataset):
         wav = wav.to(self.device)
         tokens = self.encodec_model.encode(wav) # list[EncodedFrame = tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]]
 
-        tokens = tokens[0][0][0] # shape (8, T)
-        print("tokens2 shape ", tokens.shape)
+        print(tokens[0][0][0])
+        tokens = tokens[0][0][0] # (8, T)
 
         # Only return tokens in first 2 hierarchies for training stage 1
         # Not sure if this is the correct approach.
-        tokens = tokens[:2] # shape (2, T)
-        print("tokens3 shape ", tokens.shape) # shape (2, T)
+        tokens = tokens[:2] # (2, T)
 
         # Interleave and flatten the first two hierarchies
-        tokens = tokens.transpose(0, 1).flatten() # (T, 2) -> (2T)
-        print("tokens4 shape ", tokens.shape)
+        # Then multiply every 2nd token by 2 to make space for the second hierarchy
+        tokens = tokens.flatten() # (2*T)
+        tokens[1::2] *= 2
+
+        # Convert tokens to list before decoding to audio indices
+        tokens = tokens.tolist() # list[int]
+
+        # convert into audio ids
+        _, extracted_audio_ids = self.first_stage_adapter.decode([tokens])
+
+        # list[list[int], list[int]] -> (2, T), dtype long
+        encodec_tokens = torch.tensor(extracted_audio_ids, dtype=torch.long, device=self.device).unsqueeze(0)
         
-        return tokens
+        # Interleave tokens and flatten (2, T) -> (2T,)
+        encodec_tokens = encodec_tokens.flatten() # (2T,)
+
+        return encodec_tokens # (1, 2T)
 
     def _extract_speaker_embeddings(self, audio_path: str):
         # For speaker embedding, you can also follow the code at:
@@ -104,8 +121,11 @@ def custom_collate_fn(batch):
     # Padding for text tokens
     text_tokens = pad_sequence(text_tokens, batch_first=True, padding_value=0)
     
-    # Encodec tokens (B, T_i) -> (B, T_max)
-    encodec_tokens = pad_sequence(encodec_tokens, batch_first=True, padding_value=0)
+    # Encodec tokens (B, 1, T_i) -> (B, 1, T_max)
+    print("encodec_tokens.shape: ", encodec_tokens[0].shape)
+    T_max = max([t.shape[-1] for t in encodec_tokens])
+    encodec_tokens = [F.pad(t, (0, T_max - t.shape[-1])) for t in encodec_tokens]
+    encodec_tokens = torch.stack(encodec_tokens)
     
     # Speaker embeddings
     speaker_embeddings = torch.stack(speaker_embeddings)

@@ -12,3 +12,5 @@ deepfilternet
 pydub
 gradio
 huggingface_hub
+
+accelerate
