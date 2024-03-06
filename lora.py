@@ -118,7 +118,7 @@ class TransformerWithLoRA(Transformer):
             self.setup_spk_cond_mask()
             self.setup_caches(max_batch_size=2, max_seq_length=config.block_size)
             
-    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor) -> Tensor:
+    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets: Tensor = None) -> Tensor:
         mask = self.causal_mask[None, None, input_pos]
         
         x = (
@@ -131,6 +131,12 @@ class TransformerWithLoRA(Transformer):
             x = layer(x, input_pos, mask)
         x = self.norm(x)
         logits = self.output(x)
+
+        if targets is not None:
+            # logits is (B, T, V)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+            return loss
+
         return logits
     
     @staticmethod

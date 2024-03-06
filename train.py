@@ -21,8 +21,8 @@ from accelerate import Accelerator
 
 
 # Launch this (train.py) with:
-# FOR bfloat16:     "accelerate launch train.py --mixed_precision bf16"
-# FOR float16:      "accelerate launch train.py --mixed_precision f16"
+# FOR bfloat16:     "accelerate launch --mixed_precision=bf16 train.py"
+# FOR float16:      "accelerate launch --mixed_precision=f16 train.py"
 
 accelerator = Accelerator()
 
@@ -113,68 +113,61 @@ class MetaVoiceTrainer:
         for epoch in range(epochs):
             total_loss = 0.0
             for batch_idx, (prompts, encodec_tokens, speaker_embeddings) in enumerate(dataloader):
-                print("Batch ", (batch_idx + 1))
-
-                # Move data to device & cast to appropriate dtype
-                # prompts = prompts.to(self._device, dtype=torch.long)
-                # encodec_tokens = encodec_tokens.to(self._device, dtype=torch.long)
-                # speaker_embeddings = speaker_embeddings.to(self._device, dtype=self.precision)
-
                 # B = batch size
                 # P = length of prompt
-                # T = length of encodec tokens
                 # V = vocab size (2562 for metavoice-1b)
+                # T = length of encodec tokens in batch
 
                 # prompts -> (B, P)
                 # encodec_tokens -> (B, T)
-                print("Prompts shape: ", prompts.shape)
-                print("Encodec tokens shape: ", encodec_tokens.shape)
+                # print("Prompts shape: ", prompts.shape)
+                # print("Encodec tokens shape: ", encodec_tokens.shape)
 
                 # 1. Determine random encodec token location
                 # [0, T_rand-1]
                 T_rand = torch.randint(0, encodec_tokens.shape[1], (1,)).item()
+                T = T_rand + prompts.shape[1]
 
                 # 2. Compute input_pos
-                # input_pos -> (P + T_rand)
-                input_pos = torch.arange(0, prompts.shape[1] + T_rand, device=self._device, dtype=torch.int)
+                # input_pos -> (T)
+                input_pos = torch.arange(T, device=self._device, dtype=torch.long)
+                # print("Input pos shape: ", input_pos.shape)
 
-                # 3. Arrange input tokens
-                # input_tokens -> (B, P + T_rand)
-                input_tokens = torch.cat([prompts, encodec_tokens[:, :T_rand]], dim=1)
+                # 3. Arrange input data
+                # X -> (B, P + T_rand)
+                X = torch.cat([prompts, encodec_tokens[:, :T_rand]], dim=1)
+                # print("X shape: ", X.shape)
 
-                # 4. Get GT output token labels
-                # gt_output_tokens -> (B, 1)
-                gt_output_tokens = encodec_tokens[:, T_rand]
+                # 4. Arrange target data
+                # Y -> (B, P + T_rand) <X but shifted by 1 to the right>
+                Y = torch.cat([prompts[:, 1:], encodec_tokens[:, :T_rand + 1]], dim=1)
+                # print("Y shape: ", Y.shape)
 
-                optimizer.zero_grad()
                 with autocast(dtype=self.precision):
-                    # 5. Compute logits
-                    # logits -> (B, P + T_rand, V)
+                    # 5. Compute loss
+                    optimizer.zero_grad()
+                    loss: torch.Tensor = self.model(
+                        X, 
+                        speaker_embeddings, 
+                        input_pos,
+                        targets=Y
+                    )
 
-                    # Print dtypes of all model inputs
-                    # print("input_tokens dtype: ", input_tokens.dtype)
-                    # print("speaker_embeddings dtype: ", speaker_embeddings.dtype)
-                    # print("input_pos dtype: ", input_pos.dtype)
-                    logits: torch.Tensor = self.model(input_tokens, speaker_embeddings, input_pos)
+                # print("Loss")
+                # print(loss)
 
-                    # 6. Rearrange logits 
-                    # (B, P + T_rand, V) -> (B, V, P + T_rand)
-                    logits = logits.permute(0, 2, 1)
-                    
-                    # 7. Get the newly generated token logits (the last token)
-                    # (B, V, P + T_rand) -> (B, V)
-                    logits = logits[:, :, -1]
-                    
-                    # 8. Compute loss -> (1,)
-                    print("Logits shape: ", logits.shape)
-                    print("GT output tokens shape: ", gt_output_tokens.shape)
-                    loss = F.cross_entropy(logits, gt_output_tokens)
-
-                # 9. Backward pass
+                # 6. Backward pass
+                # TODO(error) currently causes "RuntimeError: Trying to backward through the graph a second time"
+                # ^^ On 2nd iteration of the loop
+                # Not quite sure what is the cause, but someone 
+                # might be able to share some insight on this!
                 accelerator.backward(loss)
 
-                # 10. Step optimizer
+                # 7. Step optimizer
                 optimizer.step()
+
+                # 8. Update total loss
+                total_loss += loss.item()
                 
                 # Print batch loss
                 print(f'Batch {batch_idx+1}, Loss: {loss.item():.4f}')

@@ -164,10 +164,6 @@ class Transformer(nn.Module):
         x = self.norm(x)
         logits = self.output(x)
 
-        if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
-            return loss
-
         return logits
 
     @classmethod
