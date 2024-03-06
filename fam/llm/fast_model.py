@@ -26,6 +26,7 @@
 from dataclasses import dataclass
 from functools import reduce
 from math import gcd
+import math
 from typing import Optional, Tuple
 
 import torch
@@ -90,7 +91,7 @@ transformer_configs = {
         n_head=16,
         dim=2048,
         vocab_size=2562,
-    ),
+    )
 }
 
 
@@ -147,7 +148,9 @@ class Transformer(nn.Module):
 
         self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
 
-    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor) -> Tensor:
+    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets=None) -> Tensor:
+        # idx (B, S), spk_emb (B, E), input_pos (S)
+        
         mask = self.causal_mask[None, None, input_pos]
         x = (
             self.tok_embeddings(idx)
@@ -160,6 +163,11 @@ class Transformer(nn.Module):
             x = layer(x, input_pos, mask)
         x = self.norm(x)
         logits = self.output(x)
+
+        if targets is not None:
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+            return loss
+
         return logits
 
     @classmethod
@@ -188,8 +196,17 @@ class Attention(nn.Module):
 
         total_head_dim = (config.n_head + 2 * config.n_local_heads) * config.head_dim
         # key, query, value projections for all heads, but in a batch
-        self.wqkv = nn.Linear(config.dim, total_head_dim, bias=False)
-        self.wo = nn.Linear(config.dim, config.dim, bias=False)
+
+        self.wqkv = nn.Linear(
+            in_features=config.dim, 
+            out_features=total_head_dim, 
+            bias=False,
+        )
+        self.wo = nn.Linear(
+            in_features=config.dim, 
+            out_features=config.dim, 
+            bias=False
+        )
         self.kv_cache = None
 
         self.n_head = config.n_head

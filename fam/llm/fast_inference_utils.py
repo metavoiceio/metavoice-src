@@ -326,7 +326,12 @@ def build_model(
 
     print("Loading model ...")
     t0 = time.time()
-    model, tokenizer, smodel = _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision)
+    model, tokenizer, smodel = _load_model(
+        checkpoint_path,
+        spk_emb_ckpt_path,
+        device,
+        precision,
+    )
 
     device_sync(device=device)  # MKG
     print(f"Time to load model: {time.time() - t0:.02f} seconds")
