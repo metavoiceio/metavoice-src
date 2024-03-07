@@ -1,15 +1,15 @@
+import os
 import pathlib
+import typing as tp
 
 import julius
 import torch
-import typing as tp
+import torchaudio
 from audiocraft.data.audio import audio_read
 from encodec import EncodecModel
-from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import DataLoader, Dataset
-import torch.nn.functional as F
-from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
+from torch.utils.data import Dataset
 
+from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
 from fam.llm.fast_inference_utils import encode_tokens
 from fam.llm.inference import SpeakerEncoder, TrainedBPETokeniser, get_cached_embedding
 from fam.llm.utils import normalize_text
@@ -17,10 +17,12 @@ from fam.llm.utils import normalize_text
 MBD_SAMPLE_RATE = 24000
 END_OF_AUDIO_TOKEN = 1024
 
-class MetavoiceDataset(Dataset):
-    def __init__(self, dataset_dir: str, encodec_model: EncodecModel, tokenizer: TrainedBPETokeniser, spkemb_model: SpeakerEncoder, device: str):
+class MetavoiceData(Dataset):
+    def __init__(self, dataset_dir: str, block_size: int, validation_split: float, encodec_model: EncodecModel, tokenizer: TrainedBPETokeniser, spkemb_model: SpeakerEncoder, device: str):
         
         self.dataset_dir = dataset_dir
+        self.block_size = block_size
+        self.validation_split = validation_split
         self.encodec_model = encodec_model
         self.tokenizer = tokenizer
         self.spkemb_model = spkemb_model
@@ -31,7 +33,7 @@ class MetavoiceDataset(Dataset):
         # Loop through dataset_dir and create a list of tuples (wav_path, text)
         # File system will look like:
         # dataset_dir/<utt_id>.wav and dataset_dir/<utt_id>.txt
-        self.data_list = []
+        data_list = []
         for audio_file in pathlib.Path(dataset_dir).glob('*.wav'):
             utt_id = audio_file.stem
             wav_path = f"{dataset_dir}/{utt_id}.wav"
@@ -39,25 +41,83 @@ class MetavoiceDataset(Dataset):
             with open(txt_path, 'r') as f:
                 text = f.read()
             
-            self.data_list.append((wav_path, text))
+            wav, sr = torchaudio.load(wav_path)
+            if sr != MBD_SAMPLE_RATE:
+                wav = julius.resample_frac(wav, sr, MBD_SAMPLE_RATE)
+                torchaudio.save(wav_path, wav, MBD_SAMPLE_RATE)
+            
+            data_list.append((wav_path, text))
+        
+        self._prepare_dataset(data_list)
+    
+    def _prepare_dataset(self, data_list: tp.List[tp.Tuple[str, str]]):
+        # We take data_list, extract all prompts and encodec tokens, and append them with EOT for all of them
+        # This is done to prepare the dataset for the first stage of training
 
-    def __len__(self):
-        return len(self.data_list)
+        full_sequence = torch.tensor([], dtype=torch.long, device=self.device)
+        spk_embds = []
+        current_wavs = torch.tensor([], dtype=torch.float, device=self.device)
+        current_wav_duration = 0
+        for wav_path, text in data_list:
+            # Extract text tokenization
+            prompt = self._extract_text_tokens(text)
 
-    def __getitem__(self, idx):
-        audio_path, text = self.data_list[idx]
+            # Extract encodec tokens
+            encodec_tokens = self._extract_encodec_tokens(wav_path)
 
-        # Extract text tokenization
-        prompt = self._extract_text_tokens(text)
+            # Concatenate prompt and encodec tokens
+            sequence = torch.cat((prompt, encodec_tokens), dim=-1)
 
-        # Extract encodec tokens
-        encodec_tokens = self._extract_encodec_tokens(audio_path)
+            # Append EOT token
+            sequence = torch.cat((sequence, torch.tensor([END_OF_AUDIO_TOKEN], dtype=torch.long, device=self.device)))
+            
+            # Append to dataset
+            full_sequence = torch.cat((full_sequence, sequence), dim=-1)
 
-        # Extract speaker embeddings
-        spk_emb = self._extract_speaker_embeddings(audio_path)
+            # Get wav data
+            wav, sr = torchaudio.load(wav_path)  # Load the audio file
+            if sr != MBD_SAMPLE_RATE:
+                wav = julius.resample_frac(wav, sr, MBD_SAMPLE_RATE)
+            if wav.ndim == 2:
+                wav = wav.mean(dim=0)  # Average channels if stereo
+            wav = wav.to(self.device)
+            current_wavs = torch.cat((current_wavs, wav.unsqueeze(0)), dim=1)  # Concatenate along time axis
+            current_wav_duration += wav.size(0) / MBD_SAMPLE_RATE
+            if current_wav_duration >= 30:
+                current_wav_path = os.path.join(self.dataset_dir, "tmp_concatenated_wavs.wav")
+                torchaudio.save(current_wav_path, current_wavs.cpu(), MBD_SAMPLE_RATE)
+                
+                # Extract speaker embeddings of the concatenated wav
+                spk_emb = self._extract_speaker_embeddings(current_wav_path)
+                spk_embds.append(spk_emb)
+                
+                # Reset
+                current_wav_duration = 0
+                current_wavs = torch.tensor([], dtype=torch.float32, device=self.device)
+                os.remove(current_wav_path)
+        
+        # Split full_sequence into training and validation
+        split = int(len(full_sequence) * (1 - self.validation_split))
+        self.train_dataset = full_sequence[:split]
+        self.val_dataset = full_sequence[split:]
 
-        return prompt, encodec_tokens, spk_emb
+        self.spk_embds = torch.stack(spk_embds) # (N, 1, 256)
+    
+    def get_batch(self, split: tp.Literal['train', 'val'], batch_size: int):
+        if split == 'train':
+            data = self.train_dataset
+        elif split == 'val':
+            data = self.val_dataset
+        
+        ix = torch.randint(0, data.size(0) - self.block_size, (batch_size,))
+        x = torch.stack([data[i:i+self.block_size] for i in ix])
+        y = torch.stack([data[i+1:i+self.block_size+1] for i in ix])
+        
+        # Random batch_size number of speaker embeddings
+        spk_emb = self.spk_embds[torch.randint(0, self.spk_embds.size(0), (batch_size,))]
 
+        return x, y, spk_emb
+    
     def _extract_text_tokens(self, text: str):
         # For text tokens, one can use the tokenizer per:
         # https://github.com/metavoiceio/metavoice-src/blob/main/fam/llm/inference.py#L177
@@ -66,9 +126,9 @@ class MetavoiceDataset(Dataset):
 
         return encoded
 
-    def _extract_encodec_tokens(self, audio_path: str):
+    def _extract_encodec_tokens(self, wav_path: str):
         # read audio
-        wav, sr = audio_read(audio_path)
+        wav, sr = audio_read(wav_path)
 
         # Resample to MBD's expected sample rate
         if sr != MBD_SAMPLE_RATE:
@@ -108,45 +168,7 @@ class MetavoiceDataset(Dataset):
 
         return encodec_tokens # (2T,)
 
-    def _extract_speaker_embeddings(self, audio_path: str):
+    def _extract_speaker_embeddings(self, wav_path: str):
         # For speaker embedding, you can also follow the code at:
         # https://github.com/metavoiceio/metavoice-src/blob/main/fam/llm/inference.py#L435
-        return get_cached_embedding(audio_path, self.spkemb_model)
-
-def custom_collate_fn(batch):
-    # Unzip the batch
-    prompts, encodec_tokens, spk_embds = zip(*batch)
-
-    B = prompts.shape[0]
-    P = prompts.shape[1]
-    T = encodec_tokens.shape[-1]
-    T_rand = torch.randint(0, T, (1,)).item()
-
-    S = P + T_rand
-
-    # X -> (S)
-    X = torch.cat((prompt, encodec_tokens[:T_rand]), dim=-1)
-    
-    
-    # input_pos -> (S)
-    input_pos = torch.arange(S, device=self.device, dtype=torch.long)
-    
-    # Y -> (S)
-    Y = torch.cat((prompt, encodec_tokens[1:T_rand+1]), dim=-1)
-
-    return X, Y, spk_emb, input_pos
-
-def create_metavoice_dataloaders(dataset_dir: str, encodec_model: EncodecModel, tokenizer: TrainedBPETokeniser, spkemb_model: SpeakerEncoder, device: str, batch_size: int = 16, validation_split: float = 0.2, shuffle: bool = True):
-    full_dataset = MetavoiceDataset(dataset_dir, encodec_model, tokenizer, spkemb_model, device)
-    
-    # Split dataset into training and validation
-    train_size = int((1 - validation_split) * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-
-    train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
-    
-    # Create dataloaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate_fn)
-    validation_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate_fn)
-
-    return train_loader, validation_loader
+        return get_cached_embedding(wav_path, self.spkemb_model)

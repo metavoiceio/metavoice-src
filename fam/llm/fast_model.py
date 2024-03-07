@@ -140,17 +140,18 @@ class Transformer(nn.Module):
         self.spk_cond_mask = torch.zeros((2, 1, self.config.dim), dtype=torch.bool)
         self.spk_cond_mask[0] = 1
 
-    def setup_caches(self, max_batch_size, max_seq_length):
+    def setup_caches(self, max_batch_size, max_seq_length, use_kv_cache=True):
         if self.max_seq_length >= max_seq_length and self.max_batch_size >= max_batch_size:
             return
         head_dim = self.config.dim // self.config.n_head
         max_seq_length = find_multiple(max_seq_length, 8)
         self.max_seq_length = max_seq_length
         self.max_batch_size = max_batch_size
-        for b in self.layers:
-            b.attention.kv_cache = KVCache(
-                max_batch_size, max_seq_length, self.config.n_local_heads, head_dim, dtype=self.config.dtype
-            )
+        if use_kv_cache:
+            for b in self.layers:
+                b.attention.kv_cache = KVCache(
+                    max_batch_size, max_seq_length, self.config.n_local_heads, head_dim, dtype=self.config.dtype
+                )
 
         self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
 
@@ -176,14 +177,7 @@ class Transformer(nn.Module):
         logits = self.output(x)
 
         if targets is not None:
-            logits_tmp = logits.permute(0, 2, 1)
-
-            if debug_mode:
-                print("logits shape: ", logits.shape)
-                print("logits_tmp shape: ", logits_tmp.shape)
-                print("targets shape: ", targets.shape)
-
-            loss = F.cross_entropy(logits_tmp, targets)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
             return logits, loss
 
         return logits, None
