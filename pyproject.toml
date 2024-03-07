@@ -1,8 +1,32 @@
-[project]
-name = "metavoice"
+[tool.poetry]
+name = "fam"
 version = "0.1.0"
 description = "Foundational model for text to speech"
-requires-python = ">=3.10,<3.12"
+authors = []
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+torch = "^2.1.0"
+torchaudio = "^2.1.0"
+librosa = "^0.10.1"
+tqdm = "^4.66.2"
+tiktoken = "==0.5.1"
+audiocraft = "^1.2.0"
+numpy = "^1.26.4"
+ninja = "^1.11.1"
+fastapi = "^0.110.0"
+uvicorn = "^0.27.1"
+tyro = "^0.7.3"
+deepfilternet = "^0.5.6"
+pydub = "^0.25.1"
+gradio = "^4.20.1"
+huggingface_hub = "^0.21.4"
+click = "^8.1.7"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 120
@@ -19,3 +43,4 @@ exclude = '''
 
 [tool.isort]
 profile = "black"
+

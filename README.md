@@ -4,7 +4,7 @@
 <p>
 <a href="https://ttsdemo.themetavoice.xyz/"><b>Playground</b></a> | <a target="_blank" style="display: inline-block; vertical-align: middle" href="https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-</a> 
+</a>
 </p>
 
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
@@ -29,7 +29,7 @@ Server
 docker-compose up -d server && docker-compose ps && docker-compose logs -f
 ```
 
-## Installation  
+## Installation
 
 **Pre-requisites:**
 - GPU VRAM >=12GB
@@ -48,15 +48,13 @@ rm -rf ffmpeg-git-*
 # install rust if not installed (ensure you've restarted your terminal after installation)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-pip install -r requirements.txt
-pip install --upgrade torch torchaudio  # for torch.compile improvements
-pip install -e .
+poetry install && poetry run python -m pip install torch==2.2.1 torchaudio==2.2.1
 ```
 
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/fast_inference.py)
 ```bash
-python -i fam/llm/fast_inference.py 
+poetry python -i fam/llm/fast_inference.py
 
 # Run e.g. of API usage within the interactive python session
 tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model.", spk_ref_path="assets/bria.mp3")
@@ -68,7 +66,7 @@ tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-s
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](serving.py) or [web UI](app.py)
 ```bash
 python serving.py
-python app.py 
+python app.py
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
@@ -91,11 +89,11 @@ We predict EnCodec tokens from text, and speaker information. This is then diffu
   - Note that we've skipped predicting semantic tokens as done in other works, as we found that this isn't strictly necessary.
 * We use a non-causal (encoder-style) transformer to predict the rest of the 6 hierarchies from the first two hierarchies. This is a super small model (~10Mn parameters), and has extensive zero-shot generalisation to most speakers we've tried. Since it's non-causal, we're also able to predict all the timesteps in parallel.
 * We use multi-band diffusion to generate waveforms from the EnCodec tokens. We noticed that the speech is clearer than using the original RVQ decoder or VOCOS. However, the diffusion at waveform level leaves some background artifacts which are quite unpleasant to the ear. We clean this up in the next step.
-* We use DeepFilterNet to clear up the artifacts introduced by the multi-band diffusion. 
+* We use DeepFilterNet to clear up the artifacts introduced by the multi-band diffusion.
 
 ## Optimizations
-The model supports: 
-1. KV-caching via Flash Decoding 
+The model supports:
+1. KV-caching via Flash Decoding
 2. Batching (including texts of different lengths)
 
 ## Contribute
