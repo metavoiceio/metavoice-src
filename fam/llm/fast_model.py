@@ -113,6 +113,12 @@ class KVCache(nn.Module):
 
         return k_out, v_out
 
+    def clear_and_detach(self):
+        self.k_cache = self.k_cache.detach()
+        self.v_cache = self.v_cache.detach()
+        self.k_cache.zero_()
+        self.v_cache.zero_()
+
 
 class Transformer(nn.Module):
     def __init__(self, config: ModelArgs) -> None:
@@ -148,7 +154,12 @@ class Transformer(nn.Module):
 
         self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
 
-    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets=None) -> Tensor:
+    def clear_and_detach_caches(self):
+        for b in self.layers:
+            if b.attention.kv_cache is not None:
+                b.attention.kv_cache.clear_and_detach()
+
+    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets=None, debug_mode=False) -> Tensor:
         # idx (B, S), spk_emb (B, E), input_pos (S)
         
         mask = self.causal_mask[None, None, input_pos]
@@ -164,7 +175,15 @@ class Transformer(nn.Module):
         x = self.norm(x)
         logits = self.output(x)
 
-        return logits
+        if targets is not None:
+            # logits is (B, T, V)
+            if debug_mode:
+                print(f"Logits shape: {logits.shape}")
+                print(f"Targets shape: {targets.shape}")
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+            return logits, loss
+
+        return logits, None
 
     @classmethod
     def from_name(cls, name: str):

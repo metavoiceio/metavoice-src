@@ -84,7 +84,6 @@ class MetavoiceDataset(Dataset):
         wav = wav.to(self.device)
         tokens = self.encodec_model.encode(wav) # list[EncodedFrame = tp.Tuple[torch.Tensor, tp.Optional[torch.Tensor]]]
 
-        print(tokens[0][0][0])
         tokens = tokens[0][0][0] # (8, T)
 
         # Only return tokens in first 2 hierarchies for training stage 1
@@ -108,7 +107,7 @@ class MetavoiceDataset(Dataset):
         # Interleave tokens and flatten (2, T) -> (2T,)
         encodec_tokens = encodec_tokens.flatten() # (2T,)
 
-        return encodec_tokens # (1, 2T)
+        return encodec_tokens # (2T,)
 
     def _extract_speaker_embeddings(self, audio_path: str):
         # For speaker embedding, you can also follow the code at:
@@ -121,8 +120,7 @@ def custom_collate_fn(batch):
     # Padding for text tokens
     text_tokens = pad_sequence(text_tokens, batch_first=True, padding_value=0)
     
-    # Encodec tokens (B, 1, T_i) -> (B, 1, T_max)
-    print("encodec_tokens.shape: ", encodec_tokens[0].shape)
+    # Encodec tokens (B, 2, T_i) -> (B, 2, T_max)
     T_max = max([t.shape[-1] for t in encodec_tokens])
     encodec_tokens = [F.pad(t, (0, T_max - t.shape[-1])) for t in encodec_tokens]
     encodec_tokens = torch.stack(encodec_tokens)

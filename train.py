@@ -6,11 +6,14 @@ import tqdm
 from encodec import EncodecModel
 from torch.cuda.amp import GradScaler, autocast
 from torch.nn import functional as F
-from torch.optim import SGD
+from torch.optim import SGD, AdamW
+import typing as tp
 
 from dataloader import create_metavoice_dataloader
 from fam.llm.fast_inference_utils import (
     build_model,
+    _load_model,
+    device_sync,
     logits_to_probs
 )
 from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
@@ -18,6 +21,26 @@ from fam.llm.utils import get_default_dtype, get_device
 from lora import TransformerWithLoRA, freeze_parameters_except_lora
 
 from accelerate import Accelerator
+
+def _get_batch(device, precision):
+    # Generate fake batch
+    # With prompts, encodec_tokens, speaker_embeddings
+    # B = 2
+    # P = 1000
+    # V = 2562
+    # T = 1000
+    # prompts(B, P) --> long
+    # encodec_tokens(B, T) --> int
+    # speaker_embeddings(B, 1, 256) --> float
+    # input_pos(T) --> int (0 to P-1)
+    # targets(B, T) --> int
+    prompts = torch.randint(0, 2562, (2, 1000), device=device, dtype=torch.long)
+    encodec_tokens = torch.randint(0, 2562, (2, 1000), device=device, dtype=torch.long)
+    speaker_embeddings = torch.randn(2, 1, 256, device=device, dtype=precision)
+    input_pos = torch.arange(1000, device=device, dtype=torch.long)
+    targets = torch.randint(0, 2562, (2, 1000), device=device, dtype=torch.long)
+
+    return prompts, encodec_tokens, speaker_embeddings, input_pos, targets
 
 
 # Launch this (train.py) with:
@@ -52,20 +75,39 @@ class MetaVoiceTrainer:
 
         print("building model")
         self.precision = {"float16": torch.float16, "bfloat16": torch.bfloat16}[self._dtype]
-        self.model, self.tokenizer, self.smodel, self.model_size = build_model(
-            precision=self.precision,
+        # self.model, self.tokenizer, self.smodel, self.model_size = build_model(
+        #     precision=self.precision,
+        #     checkpoint_path=Path(f"{self._model_dir}/first_stage.pt"),
+        #     spk_emb_ckpt_path=Path(f"{self._model_dir}/speaker_encoder.pt"),
+        #     device=self._device,
+        #     compile=False,
+        #     compile_prefill=True,
+        # )
+
+        self.model, self.tokenizer, self.smodel = _load_model(
             checkpoint_path=Path(f"{self._model_dir}/first_stage.pt"),
             spk_emb_ckpt_path=Path(f"{self._model_dir}/speaker_encoder.pt"),
             device=self._device,
-            compile=False,
-            compile_prefill=True,
+            precision=self.precision,
         )
+        device_sync(device=self._device)  # MKG
+        with torch.device(self._device):
+            self.model.setup_spk_cond_mask()
+            self.model.setup_caches(
+                max_batch_size=2,
+                max_seq_length=self.model.config.block_size,
+            )
+        device_sync(device=self._device)  # MKG
 
         # Add LoRA to stage 1 model for finetuning
-        self.model = TransformerWithLoRA.from_base_model(self.model, precision=self.precision, device=self._device)
+        self.model = TransformerWithLoRA.from_base_model(self.model, device=self._device, precision=self.precision)
 
-    def train(self, training_name: str, epochs=10, learning_rate=1e-4):
+    def train(self, training_name: str, epochs=100, learning_rate=0.0001):
         print("Initializing dataloader...")
+
+        # Hyperparameters
+        # TODO(hyperparameters) add hyperparameters as parameters in function
+        batch_size = 2
 
         # Model configuration for training
         top_p = 0.95
@@ -91,9 +133,8 @@ class MetaVoiceTrainer:
         print("Freezing model parameters (except LoRA layers)...")
         freeze_parameters_except_lora(self.model)
 
-
         print("Initializing optimizer and scaler...")
-        optimizer = SGD(self.model.parameters(), lr=learning_rate)
+        optimizer = AdamW(self.model.parameters(), lr=learning_rate)
         scaler = GradScaler()
 
         # Prepare model, optimizer, and dataloader for mixed precision training
@@ -109,7 +150,9 @@ class MetaVoiceTrainer:
         save_dir = os.path.join('saved_models', training_name)
         os.makedirs(save_dir, exist_ok=True)
 
+        print("Number of batches: ", len(dataloader))
         print("Starting training...")
+        test_printed = False
         for epoch in range(epochs):
             total_loss = 0.0
             for batch_idx, (prompts, encodec_tokens, speaker_embeddings) in enumerate(dataloader):
@@ -119,48 +162,63 @@ class MetaVoiceTrainer:
                 # T = length of encodec tokens in batch
 
                 # prompts -> (B, P)
-                # encodec_tokens -> (B, T)
-                # print("Prompts shape: ", prompts.shape)
-                # print("Encodec tokens shape: ", encodec_tokens.shape)
+                # encodec_tokens -> (B, T) <flattened interleaved 2 hierarchies>
+
+                B = prompts.shape[0]
+                P = prompts.shape[1]
+                V = self.model.config.vocab_size
+                T = encodec_tokens.shape[-1]
+
+                if B != batch_size:
+                    # This would be the case for the last batch
+                    # if len(dataloader) % batch_size != 0
+                    # eg if batch size = 2 and len(dataloader) is uneven
+                    # then the last batch will be 1, causing issues.
+
+                    # When B != batch_size, it breaks KVCache in the model, 
+                    # because KVCache can't adapt to dynamic batch sizes.
+                    # For now we just skip the last batch to fix.
+                    continue
 
                 # 1. Determine random encodec token location
                 # [0, T_rand-1]
-                T_rand = torch.randint(0, encodec_tokens.shape[1], (1,)).item()
-                T = T_rand + prompts.shape[1]
+                T_rand = torch.randint(0, T, (1,)).item()
+                S = T_rand + P
 
                 # 2. Compute input_pos
                 # input_pos -> (T)
-                input_pos = torch.arange(T, device=self._device, dtype=torch.long)
-                # print("Input pos shape: ", input_pos.shape)
+                input_pos = torch.arange(S, device=self._device, dtype=torch.long)
 
                 # 3. Arrange input data
                 # X -> (B, P + T_rand)
                 X = torch.cat([prompts, encodec_tokens[:, :T_rand]], dim=1)
-                # print("X shape: ", X.shape)
 
                 # 4. Arrange target data
                 # Y -> (B, P + T_rand) <X but shifted by 1 to the right>
-                Y = torch.cat([prompts[:, 1:], encodec_tokens[:, :T_rand + 1]], dim=1)
-                # print("Y shape: ", Y.shape)
+                Y = torch.cat([prompts, encodec_tokens[:, 1:T_rand+1]], dim=1)
+
+                if not test_printed:
+                    print("Y shape: ", Y.shape)
+                    print("Y min value: ", Y.min())
+                    print("Y max value: ", Y.max())
+                    print("X shape: ", X.shape)
+                    print("speaker_embeddings shape: ", speaker_embeddings.shape)
+                    print("input_pos shape: ", input_pos.shape)
+                    print("Y shape: ", Y.shape)
+                    test_printed = True
 
                 with autocast(dtype=self.precision):
                     # 5. Compute loss
                     optimizer.zero_grad()
-                    loss: torch.Tensor = self.model(
+                    _, loss = self.model(
                         X, 
                         speaker_embeddings, 
                         input_pos,
-                        targets=Y
+                        targets=Y,
+                        debug_mode=True,
                     )
 
-                # print("Loss")
-                # print(loss)
-
                 # 6. Backward pass
-                # TODO(error) currently causes "RuntimeError: Trying to backward through the graph a second time"
-                # ^^ On 2nd iteration of the loop
-                # Not quite sure what is the cause, but someone 
-                # might be able to share some insight on this!
                 accelerator.backward(loss)
 
                 # 7. Step optimizer
@@ -169,8 +227,11 @@ class MetaVoiceTrainer:
                 # 8. Update total loss
                 total_loss += loss.item()
                 
+                # 9. Clear cache in model to prevent persistent tensor with gradients between iterations
+                self.model.clear_and_detach_caches()
+                
                 # Print batch loss
-                print(f'Batch {batch_idx+1}, Loss: {loss.item():.4f}')
+                print(f'Batch {batch_idx+1}, Loss: {loss.item():.4f}\n')
             
             # TODO(validation loss) implement validation loss
 
@@ -178,9 +239,9 @@ class MetaVoiceTrainer:
             print(f'Epoch {epoch+1}, Avg Loss: {avg_loss:.4f}')
             
             # Save model after each epoch
-            epoch_save_path = os.path.join(save_dir, f'{training_name}_epoch_{epoch+1}.pt')
-            torch.save(self.model.state_dict(), epoch_save_path)
-            print(f'Model saved to {epoch_save_path}')
+            # epoch_save_path = os.path.join(save_dir, f'{training_name}_epoch_{epoch+1}.pt')
+            # torch.save(self.model.state_dict(), epoch_save_path)
+            # print(f'Model saved to {epoch_save_path}')
 
         print("Training complete")
 
@@ -204,6 +265,7 @@ if __name__ == '__main__':
     )
 
     print("Training...")
+    # trainer.train_test()
     trainer.train(
         training_name
     )

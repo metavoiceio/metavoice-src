@@ -24,9 +24,9 @@ class FlattenedInterleavedEncodec2Codebook(BaseDataAdapter):
         if len(set([len(x) for x in extracted_audio_ids])) != 1:
             min_len = min([len(x) for x in extracted_audio_ids])
             max_len = max([len(x) for x in extracted_audio_ids])
-            print("WARNING: Number of tokens at each hierarchy must be of the same length!")
-            print(f"Truncating to min length of {min_len} tokens from {max_len} max.")
-            print([len(x) for x in extracted_audio_ids])
+            # print("WARNING: Number of tokens at each hierarchy must be of the same length!")
+            # print(f"Truncating to min length of {min_len} tokens from {max_len} max.")
+            # print([len(x) for x in extracted_audio_ids])
             extracted_audio_ids = [x[:min_len] for x in extracted_audio_ids]
 
         return text_ids[:-1], extracted_audio_ids
