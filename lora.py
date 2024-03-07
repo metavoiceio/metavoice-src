@@ -8,19 +8,21 @@ from fam.llm.fast_inference_utils import sample
 from torch.nn import functional as F
 import math
 
-def freeze_parameters_except_lora(model):
+def get_lora_model(model: nn.Module) -> nn.Module:
     for name, param in model.named_parameters():
-        if "lora" not in name:
-            param.requires_grad = False
-        else:
-            print(f"LoRA parameter: {name}")
+        if "lora" in name:
+            print("Enabling gradient for LoRA parameter:", name)
             param.requires_grad = True
+        else:
+            param.requires_grad = False
+    return model
 
 # LoRALinear adapted from GitHub nanoGPT-LoRA:
 # https://github.com/danielgrittner/nanoGPT-LoRA/blob/master/model.py#L20
 # Overwriting the methods of nn.Linear:
 # https://pytorch.org/docs/stable/_modules/torch/nn/modules/linear.html#Linear
 class LoRALinear(nn.Linear):
+
     def __init__(self,
                  # nn.Linear parameters
                  in_features: int,
@@ -101,104 +103,40 @@ class LoRALinear(nn.Linear):
         return self
 
 
-class TransformerWithLoRA(Transformer):
-    def __init__(self, config: ModelArgs, device: str = 'cuda', precision: torch.dtype = torch.bfloat16):
-        super(TransformerWithLoRA, self).__init__(config)
+class TransformerWithLoRA(nn.Module):
+    def __init__(self, base_model: Transformer, rank: int = 8, alpha: int = 16, dropout: float = 0.1):
+        super().__init__()
 
-        self.device = device
-        self.precision = precision
+        self.config = base_model.config
 
         # LoRALinear parameters for the speaker_cond_pos layer
-        self.speaker_cond_pos = LoRALinear(
-            in_features=config.speaker_emb_dim,
-            out_features=config.dim,
-            bias=False,
-            lora_rank=16, # Test
-            lora_alpha=0.5, # Test
-            lora_dropout=0.1, # Test
-        )
-        
-        with torch.device(device):
-            self.setup_spk_cond_mask()
-            self.setup_caches(max_batch_size=2, max_seq_length=config.block_size)
-            
-    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets: Tensor = None, debug_mode = False) -> Tensor:
-        mask = self.causal_mask[None, None, input_pos]
-        
-        x = (
-            self.tok_embeddings(idx)
-            + self.pos_embeddings(input_pos)
-            + self.speaker_cond_pos(spk_emb) * self.spk_cond_mask
-        )
-
-        for layer in self.layers:
-            x = layer(x, input_pos, mask)
-        x = self.norm(x)
-        logits = self.output(x)
-
-        if targets is not None:
-            # dummy variables for testing
-            top_p = 0.95
-            guidance_scale = 3.0
-            temperature = 0.25
-            temperature = torch.tensor(temperature, device=self.device, dtype=self.precision)
-            top_k = None
-            top_p = torch.tensor(top_p, device=self.device, dtype=self.precision)
-            guidance_scale = torch.tensor(guidance_scale, device=self.device, dtype=self.precision)
-            # logits is (B, T, V)
-            # We need to swap the 2nd and 3rd dimensions to calculate loss
-            # (B, T, V) -> (B, V, T)
-
-            out_idx, probs = sample(
-                logits,
-                guidance_scale,
-                temperature,
-                top_p,
-                top_k,
-            ) # out_idx is 1 number from 0 to 2561 (vocab size).
-
-            # Swap the 2nd and 3rd dimensions but keep same value positions
-            logits_tmp = logits.permute(0, 2, 1)
-            
-            if debug_mode:
-                print("prompt last idx: ", idx[:, -1]) # (B, 1)
-                print("last target idx: ", targets[:, -1]) # (B, 1)
-                print("out_idx: ", out_idx) # (1)? Would expect (B) here
-
-            loss = F.cross_entropy(logits_tmp, targets)
-            return logits, loss
-
-        return logits, None
-    
-    @staticmethod
-    def from_base_model(base_model: Transformer, device: str = 'cuda', precision: torch.dtype = torch.bfloat16):
-        # Create a new instance of TransformerWithLoRA using the config from the base model
-        lora_model = TransformerWithLoRA(base_model.config, device, precision)
-        
-        # Copy embeddings, layers, and other configurations directly
-        lora_model.tok_embeddings = deepcopy(base_model.tok_embeddings)
-        lora_model.pos_embeddings = deepcopy(base_model.pos_embeddings)
-        lora_model.speaker_cond_pos = deepcopy(base_model.speaker_cond_pos)
-        lora_model.layers = deepcopy(base_model.layers)
-        lora_model.norm = deepcopy(base_model.norm)
-        lora_model.output = deepcopy(base_model.output)
-
-        # Now set the speaker_cond_pos layer to use LoRALinear but with the preloaded non-LoRA weights
-        lora_model.speaker_cond_pos = LoRALinear(
+        weight = base_model.speaker_cond_pos.weight
+        bias = base_model.speaker_cond_pos.bias
+        base_model.speaker_cond_pos = LoRALinear(
             in_features=base_model.config.speaker_emb_dim,
             out_features=base_model.config.dim,
             bias=False,
-            lora_rank=16, # Test
-            lora_alpha=0.5, # Test
-            lora_dropout=0.1, # Test
+            lora_rank=rank,
+            lora_alpha=alpha,
+            lora_dropout=dropout,
         )
-        lora_model.speaker_cond_pos.weight = base_model.speaker_cond_pos.weight
+
+        # Copy over all the speaker_cond_pos weights
+        base_model.speaker_cond_pos.weight = weight
+        base_model.speaker_cond_pos.bias = bias
+
+        self.base_model = get_lora_model(base_model)
         
-        # Set the device
-        with torch.device(device):
-            lora_model.setup_spk_cond_mask()
-            lora_model.setup_caches(max_batch_size=2, max_seq_length=base_model.config.block_size)
-        
-        lora_model = lora_model.to(device=device, dtype=precision)
-        
-        return lora_model
+    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets: Tensor = None, debug_mode = False):
+        return self.base_model(idx, spk_emb, input_pos, targets, debug_mode)        
+    
+    def clear_and_detach_caches(self):
+        for b in self.base_model.layers:
+            if b.attention.kv_cache is not None:
+                b.attention.kv_cache.clear_and_detach()
+    
+    def save_lora(self, path):
+        torch.save(self.base_model.speaker_cond_pos.state_dict(), path)
+    
+    def load_lora(self, path):
+        self.base_model.speaker_cond_pos.load_state_dict(torch.load(path))

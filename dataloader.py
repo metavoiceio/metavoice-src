@@ -48,16 +48,15 @@ class MetavoiceDataset(Dataset):
         audio_path, text = self.data_list[idx]
 
         # Extract text tokenization
-        text_tokens = self._extract_text_tokens(text)
+        prompt = self._extract_text_tokens(text)
 
         # Extract encodec tokens
         encodec_tokens = self._extract_encodec_tokens(audio_path)
 
-        # Extract speaker embedding
-        speaker_embedding = self._extract_speaker_embeddings(audio_path)
+        # Extract speaker embeddings
+        spk_emb = self._extract_speaker_embeddings(audio_path)
 
-        # Some of these fields may be redundant, useful for testing right now.
-        return text_tokens, encodec_tokens, speaker_embedding
+        return prompt, encodec_tokens, spk_emb
 
     def _extract_text_tokens(self, text: str):
         # For text tokens, one can use the tokenizer per:
@@ -115,21 +114,39 @@ class MetavoiceDataset(Dataset):
         return get_cached_embedding(audio_path, self.spkemb_model)
 
 def custom_collate_fn(batch):
-    text_tokens, encodec_tokens, speaker_embeddings = zip(*batch)
-    
-    # Padding for text tokens
-    text_tokens = pad_sequence(text_tokens, batch_first=True, padding_value=0)
-    
-    # Encodec tokens (B, 2, T_i) -> (B, 2, T_max)
-    T_max = max([t.shape[-1] for t in encodec_tokens])
-    encodec_tokens = [F.pad(t, (0, T_max - t.shape[-1])) for t in encodec_tokens]
-    encodec_tokens = torch.stack(encodec_tokens)
-    
-    # Speaker embeddings
-    speaker_embeddings = torch.stack(speaker_embeddings)
-    
-    return text_tokens, encodec_tokens, speaker_embeddings
+    # Unzip the batch
+    prompts, encodec_tokens, spk_embds = zip(*batch)
 
-def create_metavoice_dataloader(dataset_dir: str, encodec_model: EncodecModel, tokenizer: TrainedBPETokeniser, spkemb_model: SpeakerEncoder, device: str, batch_size: int = 16, shuffle: bool = True):
-    dataset = MetavoiceDataset(dataset_dir, encodec_model, tokenizer, spkemb_model, device)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate_fn)
+    B = prompts.shape[0]
+    P = prompts.shape[1]
+    T = encodec_tokens.shape[-1]
+    T_rand = torch.randint(0, T, (1,)).item()
+
+    S = P + T_rand
+
+    # X -> (S)
+    X = torch.cat((prompt, encodec_tokens[:T_rand]), dim=-1)
+    
+    
+    # input_pos -> (S)
+    input_pos = torch.arange(S, device=self.device, dtype=torch.long)
+    
+    # Y -> (S)
+    Y = torch.cat((prompt, encodec_tokens[1:T_rand+1]), dim=-1)
+
+    return X, Y, spk_emb, input_pos
+
+def create_metavoice_dataloaders(dataset_dir: str, encodec_model: EncodecModel, tokenizer: TrainedBPETokeniser, spkemb_model: SpeakerEncoder, device: str, batch_size: int = 16, validation_split: float = 0.2, shuffle: bool = True):
+    full_dataset = MetavoiceDataset(dataset_dir, encodec_model, tokenizer, spkemb_model, device)
+    
+    # Split dataset into training and validation
+    train_size = int((1 - validation_split) * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+
+    train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+    
+    # Create dataloaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate_fn)
+    validation_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=custom_collate_fn)
+
+    return train_loader, validation_loader

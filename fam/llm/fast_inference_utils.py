@@ -125,7 +125,7 @@ def prefill(
     **sampling_kwargs,
 ) -> torch.Tensor:
     # input_pos: [B, S]
-    logits = model(x, spk_emb, input_pos)
+    logits, _ = model(x, spk_emb, input_pos)
     return sample(logits, **sampling_kwargs)[0]
 
 
@@ -138,7 +138,7 @@ def decode_one_token(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     # input_pos: [B, 1]
     assert input_pos.shape[-1] == 1
-    logits = model(x, spk_emb, input_pos)
+    logits, _ = model(x, spk_emb, input_pos)
     return sample(logits, **sampling_kwargs)
 
 
@@ -364,18 +364,18 @@ def build_model(
 
     device_sync(device=device)  # MKG
     t0 = time.perf_counter()
-    # y = generate(
-    #     model,
-    #     encoded,
-    #     spk_emb,
-    #     max_new_tokens=200,
-    #     callback=lambda x: x,
-    #     temperature=torch.tensor(1.0, device=device, dtype=precision),
-    #     top_k=None,
-    #     top_p=torch.tensor(0.95, device=device, dtype=precision),
-    #     guidance_scale=torch.tensor(3.0, device=device, dtype=precision),
-    #     end_of_audio_token=9999,  # don't end early for compilation stage.
-    # )
+    y = generate(
+        model,
+        encoded,
+        spk_emb,
+        max_new_tokens=200,
+        callback=lambda x: x,
+        temperature=torch.tensor(1.0, device=device, dtype=precision),
+        top_k=None,
+        top_p=torch.tensor(0.95, device=device, dtype=precision),
+        guidance_scale=torch.tensor(3.0, device=device, dtype=precision),
+        end_of_audio_token=9999,  # don't end early for compilation stage.
+    )
 
     device_sync(device=device)  # MKG
 

@@ -7,9 +7,10 @@ from encodec import EncodecModel
 from torch.cuda.amp import GradScaler, autocast
 from torch.nn import functional as F
 from torch.optim import SGD, AdamW
+from torch.utils.data import DataLoader
 import typing as tp
 
-from dataloader import create_metavoice_dataloader
+from dataloader import create_metavoice_dataloaders
 from fam.llm.fast_inference_utils import (
     build_model,
     _load_model,
@@ -18,30 +19,9 @@ from fam.llm.fast_inference_utils import (
 )
 from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
 from fam.llm.utils import get_default_dtype, get_device
-from lora import TransformerWithLoRA, freeze_parameters_except_lora
+from lora import TransformerWithLoRA, get_lora_model
 
 from accelerate import Accelerator
-
-def _get_batch(device, precision):
-    # Generate fake batch
-    # With prompts, encodec_tokens, speaker_embeddings
-    # B = 2
-    # P = 1000
-    # V = 2562
-    # T = 1000
-    # prompts(B, P) --> long
-    # encodec_tokens(B, T) --> int
-    # speaker_embeddings(B, 1, 256) --> float
-    # input_pos(T) --> int (0 to P-1)
-    # targets(B, T) --> int
-    prompts = torch.randint(0, 2562, (2, 1000), device=device, dtype=torch.long)
-    encodec_tokens = torch.randint(0, 2562, (2, 1000), device=device, dtype=torch.long)
-    speaker_embeddings = torch.randn(2, 1, 256, device=device, dtype=precision)
-    input_pos = torch.arange(1000, device=device, dtype=torch.long)
-    targets = torch.randint(0, 2562, (2, 1000), device=device, dtype=torch.long)
-
-    return prompts, encodec_tokens, speaker_embeddings, input_pos, targets
-
 
 # Launch this (train.py) with:
 # FOR bfloat16:     "accelerate launch --mixed_precision=bf16 train.py"
@@ -53,7 +33,7 @@ class MetaVoiceTrainer:
     ENCODEC_BANDWIDTH = 6.0
     END_OF_AUDIO_TOKEN = 1024
 
-    def __init__(self, model_dir: str = 'models', dataset_dir: str = 'dataset', train_stage_two: bool = False, seed: int = 1337):
+    def __init__(self, model_dir: str = 'models', dataset_dir: str = 'dataset'):
         self._model_dir = model_dir
         self._dataset_dir = dataset_dir
         self._output_dir = f"{self._model_dir}/outputs"
@@ -99,48 +79,44 @@ class MetaVoiceTrainer:
             )
         device_sync(device=self._device)  # MKG
 
-        # Add LoRA to stage 1 model for finetuning
-        self.model = TransformerWithLoRA.from_base_model(self.model, device=self._device, precision=self.precision)
+        # Add LoRA to model for finetuning
+        self.model = TransformerWithLoRA(self.model)
 
-    def train(self, training_name: str, epochs=100, learning_rate=0.0001):
+    def train(self, training_name: str, epochs=100, learning_rate=2e-5):
         print("Initializing dataloader...")
 
         # Hyperparameters
         # TODO(hyperparameters) add hyperparameters as parameters in function
         batch_size = 2
+        validation_split = 0.2
+        shuffle = True
+        save_epochs = epochs + 1 # Just disable for now
+        log_epochs = 10
+        eval_epochs = 10
+        weight_decay = 0.001
 
-        # Model configuration for training
-        top_p = 0.95
-        guidance_scale = 3.0
-        temperature = 1.0
-
-        temperature = torch.tensor(temperature, device=self._device, dtype=self.precision)
-        top_k = None
-        top_p = torch.tensor(top_p, device=self._device, dtype=self.precision)
-        guidance_scale = torch.tensor(guidance_scale, device=self._device, dtype=self.precision)
-
-        dataloader = create_metavoice_dataloader(
+        train_dataloader, validation_dataloader = create_metavoice_dataloaders(
             dataset_dir=self._dataset_dir,
             encodec_model=self.encodec_model,
-            tokenizer=self.tokenizer, 
-            spkemb_model=self.smodel, 
-            batch_size=2, 
-            device=self._device
+            tokenizer=self.tokenizer,
+            spkemb_model=self.smodel,
+            device=self._device,
+            batch_size=batch_size,
+            validation_split=validation_split,
+            shuffle=shuffle,
         )
-        # TODO(validation data) load validation data as well for val loss
-
-        # Freeze stage 1 model parameters except LoRA layers
-        print("Freezing model parameters (except LoRA layers)...")
-        freeze_parameters_except_lora(self.model)
 
         print("Initializing optimizer and scaler...")
-        optimizer = AdamW(self.model.parameters(), lr=learning_rate)
-        scaler = GradScaler()
+        optimizer = AdamW(
+            self.model.parameters(), 
+            lr=learning_rate,
+            weight_decay=weight_decay,
+        )
 
         # Prepare model, optimizer, and dataloader for mixed precision training
         print("Preparing model, optimizer, and dataloader for mixed precision training...")
-        self.model, optimizer, dataloader = accelerator.prepare(self.model, optimizer, dataloader)
-        
+        self.model, optimizer, train_dataloader, validation_dataloader = accelerator.prepare(self.model, optimizer, train_dataloader, validation_dataloader)
+
         # Put model in training mode
         print("Setting model to training mode...")
         self.model.train()
@@ -150,59 +126,27 @@ class MetaVoiceTrainer:
         save_dir = os.path.join('saved_models', training_name)
         os.makedirs(save_dir, exist_ok=True)
 
-        print("Number of batches: ", len(dataloader))
+        print("Number of training batches: ", len(train_dataloader))
         print("Starting training...")
         test_printed = False
+        nan_printed = False
         for epoch in range(epochs):
             total_loss = 0.0
-            for batch_idx, (prompts, encodec_tokens, speaker_embeddings) in enumerate(dataloader):
-                # B = batch size
-                # P = length of prompt
-                # V = vocab size (2562 for metavoice-1b)
-                # T = length of encodec tokens in batch
-
-                # prompts -> (B, P)
-                # encodec_tokens -> (B, T) <flattened interleaved 2 hierarchies>
-
-                B = prompts.shape[0]
-                P = prompts.shape[1]
-                V = self.model.config.vocab_size
-                T = encodec_tokens.shape[-1]
-
+            for batch_idx, (X, Y, spk_embds, input_pos) in enumerate(train_dataloader):
+                B = X.shape[0]
                 if B != batch_size:
-                    # This would be the case for the last batch
-                    # if len(dataloader) % batch_size != 0
-                    # eg if batch size = 2 and len(dataloader) is uneven
-                    # then the last batch will be 1, causing issues.
-
-                    # When B != batch_size, it breaks KVCache in the model, 
-                    # because KVCache can't adapt to dynamic batch sizes.
-                    # For now we just skip the last batch to fix.
+                    # Batch size is not consistent, skip this batch.
+                    # This is a temporary fix, root cause should be fixed instead.
+                    # Error is caused in KVCache, where the batch size cannot be dynamic
+                    # as it is set at the initialization of the model.
                     continue
-
-                # 1. Determine random encodec token location
-                # [0, T_rand-1]
-                T_rand = torch.randint(0, T, (1,)).item()
-                S = T_rand + P
-
-                # 2. Compute input_pos
-                # input_pos -> (T)
-                input_pos = torch.arange(S, device=self._device, dtype=torch.long)
-
-                # 3. Arrange input data
-                # X -> (B, P + T_rand)
-                X = torch.cat([prompts, encodec_tokens[:, :T_rand]], dim=1)
-
-                # 4. Arrange target data
-                # Y -> (B, P + T_rand) <X but shifted by 1 to the right>
-                Y = torch.cat([prompts, encodec_tokens[:, 1:T_rand+1]], dim=1)
-
+                
                 if not test_printed:
                     print("Y shape: ", Y.shape)
                     print("Y min value: ", Y.min())
                     print("Y max value: ", Y.max())
                     print("X shape: ", X.shape)
-                    print("speaker_embeddings shape: ", speaker_embeddings.shape)
+                    print("spk_embds shape: ", spk_embds.shape)
                     print("input_pos shape: ", input_pos.shape)
                     print("Y shape: ", Y.shape)
                     test_printed = True
@@ -210,12 +154,12 @@ class MetaVoiceTrainer:
                 with autocast(dtype=self.precision):
                     # 5. Compute loss
                     optimizer.zero_grad()
-                    _, loss = self.model(
+                    logits, loss = self.model(
                         X, 
-                        speaker_embeddings, 
+                        spk_embds, 
                         input_pos,
                         targets=Y,
-                        debug_mode=True,
+                        debug_mode=False,
                     )
 
                 # 6. Backward pass
@@ -225,25 +169,83 @@ class MetaVoiceTrainer:
                 optimizer.step()
 
                 # 8. Update total loss
+                print("loss")
+                print(loss)
                 total_loss += loss.item()
+
+                # check if loss is nan
+                if nan_printed == False and torch.isnan(loss).any():
+                    print("loss is nan!") 
+                    print("batch_idx: ", batch_idx)
+                    
+                    print("logits: ", logits)
+                    print("logits shape: ", logits.shape, "\n\n")
+
+                    print("X: ", X)
+                    print("X shape: ", X.shape, "\n\n")
+                    
+                    print("Y: ", Y)
+                    print("Y shape: ", Y.shape, "\n\n")
+
+                    print("input_pos: ", input_pos)
+                    print("input_pos shape: ", input_pos.shape, "\n\n")
+
+                    print("spk_embds: ", spk_embds)
+                    print("spk_embds shape: ", spk_embds.shape, "\n")
+
+                    nan_printed = True
                 
                 # 9. Clear cache in model to prevent persistent tensor with gradients between iterations
                 self.model.clear_and_detach_caches()
-                
-                # Print batch loss
-                print(f'Batch {batch_idx+1}, Loss: {loss.item():.4f}\n')
             
-            # TODO(validation loss) implement validation loss
+            print("len train_dataloader")
+            print(len(train_dataloader))
+            print("total loss")
+            print(total_loss)
 
-            avg_loss = total_loss / len(dataloader)
-            print(f'Epoch {epoch+1}, Avg Loss: {avg_loss:.4f}')
+            avg_loss = total_loss / len(train_dataloader)
+
+            # Print average loss every log_epochs
+            if (epoch + 1) % log_epochs == 0:
+                print(f'Epoch {epoch+1}, Avg Loss: {avg_loss:.4f}')
             
-            # Save model after each epoch
-            # epoch_save_path = os.path.join(save_dir, f'{training_name}_epoch_{epoch+1}.pt')
-            # torch.save(self.model.state_dict(), epoch_save_path)
-            # print(f'Model saved to {epoch_save_path}')
+            # Save model every save_epochs
+            if (epoch + 1) % save_epochs == 0:
+                print(f'Saving model at epoch {epoch+1}...')
+                epoch_save_path = os.path.join(save_dir, f'{training_name}_epoch_{epoch+1}.pt')
+                torch.save(self.model.state_dict(), epoch_save_path)
+                print(f'Model saved to {epoch_save_path}')
+            
+            if (epoch + 1) % eval_epochs == 0:
+                # Evaluate model
+                print("Evaluating model...")
+                losses = self.estimate_loss(validation_dataloader)
+                train_loss = losses['train']
+                val_loss = losses['val']
+                print(f'Epoch {epoch+1}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
 
         print("Training complete")
+    
+    @torch.no_grad()
+    def estimate_loss(self, val_dataloader: DataLoader, eval_iters: int = 50):
+        out = {}
+        self.model.eval()
+        for split in ['train', 'val']:
+            losses = torch.zeros(eval_iters)
+            for k in tqdm.tqdm(range(eval_iters), desc=f'Estimating {split} loss'):
+                X, Y, spk_embds, input_pos = next(iter(val_dataloader))
+                with autocast():
+                    _, loss = self.model(
+                        X, 
+                        spk_embds, 
+                        input_pos,
+                        targets=Y,
+                        debug_mode=False,
+                    )
+                losses[k] = loss.item()
+            out[split] = losses.mean()
+        self.model.train()
+        return out
 
 if __name__ == '__main__':
     model_dir = 'models'

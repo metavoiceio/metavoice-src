@@ -159,9 +159,9 @@ class Transformer(nn.Module):
             if b.attention.kv_cache is not None:
                 b.attention.kv_cache.clear_and_detach()
 
-    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets=None, debug_mode=False) -> Tensor:
+    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets: Tensor = None, debug_mode = False):
         # idx (B, S), spk_emb (B, E), input_pos (S)
-        
+
         mask = self.causal_mask[None, None, input_pos]
         x = (
             self.tok_embeddings(idx)
@@ -170,17 +170,20 @@ class Transformer(nn.Module):
             + self.speaker_cond_pos(spk_emb) * self.spk_cond_mask
         )
 
-        for i, layer in enumerate(self.layers):
+        for layer in self.layers:
             x = layer(x, input_pos, mask)
         x = self.norm(x)
         logits = self.output(x)
 
         if targets is not None:
-            # logits is (B, T, V)
+            logits_tmp = logits.permute(0, 2, 1)
+
             if debug_mode:
-                print(f"Logits shape: {logits.shape}")
-                print(f"Targets shape: {targets.shape}")
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+                print("logits shape: ", logits.shape)
+                print("logits_tmp shape: ", logits_tmp.shape)
+                print("targets shape: ", targets.shape)
+
+            loss = F.cross_entropy(logits_tmp, targets)
             return logits, loss
 
         return logits, None
