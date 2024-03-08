@@ -1,10 +1,7 @@
 from torch import nn, Tensor
 import torch
 
-from copy import deepcopy
-
-from fam.llm.fast_model import ModelArgs, Transformer
-from fam.llm.fast_inference_utils import sample
+from fam.llm.fast_model import Transformer
 from torch.nn import functional as F
 import math
 
@@ -104,7 +101,7 @@ class LoRALinear(nn.Linear):
 
 
 class TransformerWithLoRA(nn.Module):
-    def __init__(self, base_model: Transformer, rank: int = 8, alpha: int = 16, dropout: float = 0.1):
+    def __init__(self, base_model: Transformer, rank: int = 8, alpha: int = 16, dropout: float = 0.1, training_mode: bool = True):
         super().__init__()
 
         self.config = base_model.config
@@ -125,18 +122,20 @@ class TransformerWithLoRA(nn.Module):
         base_model.speaker_cond_pos.weight = weight
         base_model.speaker_cond_pos.bias = bias
 
-        self.base_model = get_lora_model(base_model)
+        if training_mode:
+            self.base_model = get_lora_model(base_model)
         
     def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets: Tensor = None, debug_mode = False):
         return self.base_model(idx, spk_emb, input_pos, targets, debug_mode)        
     
-    def clear_and_detach_caches(self):
-        for b in self.base_model.layers:
-            if b.attention.kv_cache is not None:
-                b.attention.kv_cache.clear_and_detach()
+    def setup_spk_cond_mask(self):
+        self.base_model.setup_spk_cond_mask()
     
-    def save_lora(self, path):
+    def setup_caches(self, *args, **kwargs):
+        self.base_model.setup_caches(*args, **kwargs)
+    
+    def save_lora(self, path: str):
         torch.save(self.base_model.speaker_cond_pos.state_dict(), path)
     
-    def load_lora(self, path):
+    def load_lora(self, path: str):
         self.base_model.speaker_cond_pos.load_state_dict(torch.load(path))

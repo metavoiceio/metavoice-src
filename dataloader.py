@@ -65,13 +65,15 @@ class MetavoiceData(Dataset):
             # Extract encodec tokens
             encodec_tokens = self._extract_encodec_tokens(wav_path)
 
-            # Concatenate prompt and encodec tokens
-            sequence = torch.cat((prompt, encodec_tokens), dim=-1)
+            # Concatenate prompt and encodec tokens, and EOT token at the end
+            eot = torch.tensor([END_OF_AUDIO_TOKEN], dtype=torch.long, device=self.device)
+            sequence = torch.cat((prompt, encodec_tokens, eot))
 
-            # Append EOT token
-            sequence = torch.cat((sequence, torch.tensor([END_OF_AUDIO_TOKEN], dtype=torch.long, device=self.device)))
-            
             # Append to dataset
+            # print("Encodec Tokens Length: ", encodec_tokens.size(0))
+            # print("Prompt Length: ", prompt.size(0))
+            # print("Tokenized Data Point length:", sequence.size(0))
+            # print("Prompt: ", prompt)
             full_sequence = torch.cat((full_sequence, sequence), dim=-1)
 
             # Get wav data
@@ -150,23 +152,25 @@ class MetavoiceData(Dataset):
         tokens = tokens[:2] # (2, T)
 
         # Interleave and flatten the first two hierarchies
-        # Then multiply every 2nd token by 2 to make space for the second hierarchy
-        tokens = tokens.flatten() # (2*T)
-        tokens[1::2] *= 2
-
-        # Convert tokens to list before decoding to audio indices
-        tokens = tokens.tolist() # list[int]
-
-        # convert into audio ids
-        _, extracted_audio_ids = self.first_stage_adapter.decode([tokens])
-
-        # list[list[int], list[int]] -> (2, T), dtype long
-        encodec_tokens = torch.tensor(extracted_audio_ids, dtype=torch.long, device=self.device).unsqueeze(0)
+        # Then add 1024 to 1st hierarchy tokens to match stage 1 output
+        tokens = tokens.flatten().to(dtype=torch.int32) # (2*T)
+        tokens[0::2] += END_OF_AUDIO_TOKEN
         
-        # Interleave tokens and flatten (2, T) -> (2T,)
-        encodec_tokens = encodec_tokens.flatten() # (2T,)
+        return tokens
 
-        return encodec_tokens # (2T,)
+        # # Convert tokens to list before decoding to audio indices
+        # tokens = tokens.tolist() # list[int]
+
+        # # convert into audio ids
+        # _, extracted_audio_ids = self.first_stage_adapter.decode([tokens])
+
+        # # list[list[int], list[int]] -> (2, T), dtype long
+        # encodec_tokens = torch.tensor(extracted_audio_ids, dtype=torch.long, device=self.device).unsqueeze(0)
+        
+        # # Interleave tokens and flatten (2, T) -> (2T,)
+        # encodec_tokens = encodec_tokens.flatten() # (2T,)
+
+        # return encodec_tokens # (2T,)
 
     def _extract_speaker_embeddings(self, wav_path: str):
         # For speaker embedding, you can also follow the code at:

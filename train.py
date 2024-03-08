@@ -70,11 +70,11 @@ class MetaVoiceTrainer:
                 use_kv_cache=False,
             )
         device_sync(device=self._device)  # MKG
-
+        
         # Add LoRA to model for finetuning
         self.model = TransformerWithLoRA(self.model)
 
-    def train(self, training_name: str, epochs=100, learning_rate=7.5e-4):
+    def train(self, training_name: str, epochs=100, learning_rate=1e-4):
         print("Initializing dataloader...")
 
         # Hyperparameters
@@ -88,7 +88,6 @@ class MetaVoiceTrainer:
         beta1 = 0.9
         beta2 = 0.95
         grad_clip = 1.0
-        # gradient_accumulation_steps = 4
         gradient_accumulation_steps = 5 * 8
         block_size = self.model.config.block_size
 
