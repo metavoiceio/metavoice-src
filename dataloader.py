@@ -85,7 +85,7 @@ class MetavoiceData(Dataset):
             wav = wav.to(self.device)
             current_wavs = torch.cat((current_wavs, wav.unsqueeze(0)), dim=1)  # Concatenate along time axis
             current_wav_duration += wav.size(0) / MBD_SAMPLE_RATE
-            if current_wav_duration >= 30:
+            if current_wav_duration >= 45: # 45 seconds
                 current_wav_path = os.path.join(self.dataset_dir, "tmp_concatenated_wavs.wav")
                 torchaudio.save(current_wav_path, current_wavs.cpu(), MBD_SAMPLE_RATE)
                 

@@ -209,11 +209,14 @@ class Attention(nn.Module):
         total_head_dim = (config.n_head + 2 * config.n_local_heads) * config.head_dim
         # key, query, value projections for all heads, but in a batch
 
+        # c_attn
         self.wqkv = nn.Linear(
             in_features=config.dim, 
             out_features=total_head_dim, 
             bias=False,
         )
+
+        # c_proj
         self.wo = nn.Linear(
             in_features=config.dim, 
             out_features=config.dim, 

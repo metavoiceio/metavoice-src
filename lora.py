@@ -106,21 +106,26 @@ class TransformerWithLoRA(nn.Module):
 
         self.config = base_model.config
 
-        # LoRALinear parameters for the speaker_cond_pos layer
-        weight = base_model.speaker_cond_pos.weight
-        bias = base_model.speaker_cond_pos.bias
-        base_model.speaker_cond_pos = LoRALinear(
-            in_features=base_model.config.speaker_emb_dim,
-            out_features=base_model.config.dim,
-            bias=False,
-            lora_rank=rank,
-            lora_alpha=alpha,
-            lora_dropout=dropout,
-        )
+        # LoRALinear injection into attention layers
+        for i, layer in enumerate(base_model.layers):
+            if i == 1:
+                # Only inject LoRALinear into the first layer
+                break
+            layer.attention.wqkv = LoRALinear( # c_attn
+                in_features=layer.attention.wqkv.in_features,
+                out_features=layer.attention.wqkv.out_features,
+                lora_rank=rank,
+                lora_alpha=alpha,
+                lora_dropout=dropout
+            )
 
-        # Copy over all the speaker_cond_pos weights
-        base_model.speaker_cond_pos.weight = weight
-        base_model.speaker_cond_pos.bias = bias
+            layer.attention.wo = LoRALinear( # c_proj
+                in_features=layer.attention.wo.in_features,
+                out_features=layer.attention.wo.out_features,
+                lora_rank=rank,
+                lora_alpha=alpha,
+                lora_dropout=dropout
+            )
 
         if training_mode:
             self.base_model = get_lora_model(base_model)

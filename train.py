@@ -73,24 +73,24 @@ class MetaVoiceTrainer:
         
         # Add LoRA to model for finetuning
         self.model = TransformerWithLoRA(self.model)
+        self.model = self.model.to(self._device)
 
     def train(self, training_name: str, epochs=100, learning_rate=1e-4):
-        print("Initializing dataloader...")
-
         # Hyperparameters
         # TODO(hyperparameters) add hyperparameters as parameters in function
         batch_size = 2
-        validation_split = 0.2
+        validation_split = 0.1
         save_epochs = 5 # Just disable for now
         log_epochs = 5
-        eval_epochs = 10
+        eval_epochs = 20
         weight_decay = 0.001
         beta1 = 0.9
         beta2 = 0.95
         grad_clip = 1.0
-        gradient_accumulation_steps = 5 * 8
-        block_size = self.model.config.block_size
+        gradient_accumulation_steps = 5 * 2
+        block_size = self.model.config.block_size # 2048 for metavoice-1b
 
+        print("Initializing dataloader...")
         data = MetavoiceData(
             dataset_dir=self._dataset_dir,
             block_size=block_size,
@@ -122,6 +122,11 @@ class MetaVoiceTrainer:
         save_dir = os.path.join('saved_models', training_name)
         os.makedirs(save_dir, exist_ok=True)
 
+        n_params = sum(p.numel() for p in self.model.parameters())
+        n_trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+        print(f"Model has {n_params} parameters, {n_trainable_params} of which are trainable")
+
         print("Starting training...")
         test_printed = False
         for epoch in range(epochs):
@@ -130,6 +135,11 @@ class MetaVoiceTrainer:
                 input_pos = torch.arange(block_size, device=self._device)
                 
                 if not test_printed:
+                    print(X[0])
+                    print("^^^^X[0]^^^^")
+                    
+                    print(Y[0])
+                    print("^^^^Y[0]^^^^")
                     test_printed = True
 
                 with autocast(dtype=self.precision):
