@@ -186,3 +186,12 @@ cython_debug/
 #.idea/
 **/.tmp
 !fam/quantiser/audio/speaker_encoder/ckpt/ckpt.pt
+
+
+# Local data files for testing
+dataset
+
+
+# Dummy dataset for fine tuning demonstration.
+# Includes 25 samples of the same speaker (VCTK Dataset-->"p311")
+!dummy_dataset/**

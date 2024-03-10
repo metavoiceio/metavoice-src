@@ -26,6 +26,7 @@
 from dataclasses import dataclass
 from functools import reduce
 from math import gcd
+import math
 from typing import Optional, Tuple
 
 import torch
@@ -90,7 +91,7 @@ transformer_configs = {
         n_head=16,
         dim=2048,
         vocab_size=2562,
-    ),
+    )
 }
 
 
@@ -111,6 +112,12 @@ class KVCache(nn.Module):
         v_out[:, :, input_pos] = v_val
 
         return k_out, v_out
+
+    def clear_and_detach(self):
+        self.k_cache = self.k_cache.detach()
+        self.v_cache = self.v_cache.detach()
+        self.k_cache.zero_()
+        self.v_cache.zero_()
 
 
 class Transformer(nn.Module):
@@ -133,21 +140,29 @@ class Transformer(nn.Module):
         self.spk_cond_mask = torch.zeros((2, 1, self.config.dim), dtype=torch.bool)
         self.spk_cond_mask[0] = 1
 
-    def setup_caches(self, max_batch_size, max_seq_length):
+    def setup_caches(self, max_batch_size, max_seq_length, use_kv_cache=True):
         if self.max_seq_length >= max_seq_length and self.max_batch_size >= max_batch_size:
             return
         head_dim = self.config.dim // self.config.n_head
         max_seq_length = find_multiple(max_seq_length, 8)
         self.max_seq_length = max_seq_length
         self.max_batch_size = max_batch_size
-        for b in self.layers:
-            b.attention.kv_cache = KVCache(
-                max_batch_size, max_seq_length, self.config.n_local_heads, head_dim, dtype=self.config.dtype
-            )
+        if use_kv_cache:
+            for b in self.layers:
+                b.attention.kv_cache = KVCache(
+                    max_batch_size, max_seq_length, self.config.n_local_heads, head_dim, dtype=self.config.dtype
+                )
 
         self.causal_mask = torch.tril(torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool))
 
-    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor) -> Tensor:
+    def clear_and_detach_caches(self):
+        for b in self.layers:
+            if b.attention.kv_cache is not None:
+                b.attention.kv_cache.clear_and_detach()
+
+    def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets: Tensor = None, debug_mode = False):
+        # idx (B, S), spk_emb (B, E), input_pos (S)
+        
         mask = self.causal_mask[None, None, input_pos]
         x = (
             self.tok_embeddings(idx)
@@ -156,11 +171,16 @@ class Transformer(nn.Module):
             + self.speaker_cond_pos(spk_emb) * self.spk_cond_mask
         )
 
-        for i, layer in enumerate(self.layers):
+        for layer in self.layers:
             x = layer(x, input_pos, mask)
         x = self.norm(x)
         logits = self.output(x)
-        return logits
+
+        if targets is not None:
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            return logits, loss
+
+        return logits, None
 
     @classmethod
     def from_name(cls, name: str):
@@ -188,8 +208,20 @@ class Attention(nn.Module):
 
         total_head_dim = (config.n_head + 2 * config.n_local_heads) * config.head_dim
         # key, query, value projections for all heads, but in a batch
-        self.wqkv = nn.Linear(config.dim, total_head_dim, bias=False)
-        self.wo = nn.Linear(config.dim, config.dim, bias=False)
+
+        # c_attn
+        self.wqkv = nn.Linear(
+            in_features=config.dim, 
+            out_features=total_head_dim, 
+            bias=False,
+        )
+
+        # c_proj
+        self.wo = nn.Linear(
+            in_features=config.dim, 
+            out_features=config.dim, 
+            bias=False
+        )
         self.kv_cache = None
 
         self.n_head = config.n_head

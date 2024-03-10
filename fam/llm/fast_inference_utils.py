@@ -33,6 +33,8 @@ import torch._dynamo.config
 import torch._inductor.config
 import tqdm
 
+from lora import TransformerWithLoRA
+
 
 def device_sync(device):
     if "cuda" in device:
@@ -125,7 +127,7 @@ def prefill(
     **sampling_kwargs,
 ) -> torch.Tensor:
     # input_pos: [B, S]
-    logits = model(x, spk_emb, input_pos)
+    logits, _ = model(x, spk_emb, input_pos)
     return sample(logits, **sampling_kwargs)[0]
 
 
@@ -138,7 +140,7 @@ def decode_one_token(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     # input_pos: [B, 1]
     assert input_pos.shape[-1] == 1
-    logits = model(x, spk_emb, input_pos)
+    logits, _ = model(x, spk_emb, input_pos)
     return sample(logits, **sampling_kwargs)
 
 
@@ -208,6 +210,10 @@ def generate(
     next_token = prefill(model, prompt.view(1, -1).repeat(2, 1), spk_emb, input_pos, **sampling_kwargs)
     seq = torch.cat([seq, next_token.view(1)])
 
+    print("max_new_tokens: ", max_new_tokens)
+    print("next token: ", next_token)
+    print("seq: ", seq)
+
     input_pos = torch.tensor([T], device=device, dtype=torch.int)
 
     generated_tokens, _ = decode_n_tokens(
@@ -220,6 +226,7 @@ def generate(
         end_of_audio_token=end_of_audio_token,
         **sampling_kwargs,
     )
+    print("generated tokens: ", generated_tokens)
     seq = torch.cat([seq, torch.cat(generated_tokens)])
 
     return seq
@@ -251,6 +258,7 @@ def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision):
     #     from quantize import WeightOnlyInt4QuantHandler
     #     simple_quantizer = WeightOnlyInt4QuantHandler(model, groupsize)
     #     model = simple_quantizer.convert_for_runtime()
+        
 
     checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=False)
     state_dict = checkpoint["model"]
@@ -319,6 +327,7 @@ def build_model(
     compile_prefill: bool = False,
     compile: bool = True,
     device: str = "cuda",
+    lora_ckpt_path: str | None = None,
 ):
     assert checkpoint_path.is_file(), checkpoint_path
 
@@ -326,7 +335,18 @@ def build_model(
 
     print("Loading model ...")
     t0 = time.time()
-    model, tokenizer, smodel = _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision)
+    model, tokenizer, smodel = _load_model(
+        checkpoint_path,
+        spk_emb_ckpt_path,
+        device,
+        precision,
+    )
+
+    if lora_ckpt_path:
+        print(f"Loading LoRA from {lora_ckpt_path}")
+        model = TransformerWithLoRA(model, training_mode=False)
+        model.load_lora(lora_ckpt_path)
+        model = model.to(device)
 
     device_sync(device=device)  # MKG
     print(f"Time to load model: {time.time() - t0:.02f} seconds")
