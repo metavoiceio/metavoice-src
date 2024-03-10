@@ -27,7 +27,6 @@ from fam.llm.utils import (
     get_device,
     normalize_text,
 )
-from lora import TransformerWithLoRA
 
 
 class TTS:
@@ -75,13 +74,8 @@ class TTS:
             device=self._device,
             compile=True,
             compile_prefill=True,
+            lora_ckpt_path=lora_ckpt_path,
         )
-
-        if lora_ckpt_path:
-            print(f"Loading LoRA from {lora_ckpt_path}")
-            self.model = TransformerWithLoRA(self.model, rank=8, alpha=16, dropout=0.1)
-            self.model.load_lora(lora_ckpt_path)
-            self.model = self.model.to(self._device)
 
     def synthesise(self, text: str, spk_ref_path: str, top_p=0.95, guidance_scale=3.0, temperature=1.0) -> str:
         """

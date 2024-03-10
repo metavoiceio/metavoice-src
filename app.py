@@ -12,7 +12,8 @@ from fam.llm.fast_inference import TTS
 from fam.llm.utils import check_audio_file
 
 #### setup model
-lora_ckpt_path = 'saved_models/finetune_001/lora_epoch_10.pt'
+lora_ckpt_path = 'saved_models/finetune_001/lora_iter_num_5.pt'
+# lora_ckpt_path = None
 TTS_MODEL = TTS(lora_ckpt_path=lora_ckpt_path)
 
 #### setup interface

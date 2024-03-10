@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import math
 import torch
 import tqdm
 from accelerate import Accelerator
@@ -19,6 +20,7 @@ from lora import TransformerWithLoRA
 # FOR float16:      "accelerate launch --mixed_precision=f16 train.py"
 
 # accelerator = Accelerator()
+
 
 class MetaVoiceTrainer:
     ENCODEC_BANDWIDTH = 6.0
@@ -79,16 +81,37 @@ class MetaVoiceTrainer:
         # Hyperparameters
         # TODO(hyperparameters) add hyperparameters as parameters in function
         batch_size = 2
-        validation_split = 0.1
-        save_interval = 5
-        log_interval = 5
-        eval_interval = 20
+        # adamw optimizer
         weight_decay = 1e-1
         beta1 = 0.9
         beta2 = 0.95
         grad_clip = 1.0
-        gradient_accumulation_steps = 32
+
+        # learning rate decay settings
+        decay_lr = True
+        warmup_iters = 50
+        lr_decay_iters = max_iters / 2 + warmup_iters
+        min_lr = 6e-5
+
+        validation_split = 0.1
+        save_interval = 5
+        log_interval = 5
+        eval_interval = 200
+        gradient_accumulation_steps = 5
         block_size = self.model.config.block_size # 2048 for metavoice-1b
+
+        def get_lr(it):
+            # 1) linear warmup for warmup_iters steps
+            if it < warmup_iters:
+                return learning_rate * it / warmup_iters
+            # 2) if it > lr_decay_iters, return min learning rate
+            if it > lr_decay_iters:
+                return min_lr
+            # 3) in between, use cosine decay down to min learning rate
+            decay_ratio = (it - warmup_iters) / (lr_decay_iters - warmup_iters)
+            assert 0 <= decay_ratio <= 1
+            coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff ranges 0..1
+            return min_lr + coeff * (learning_rate - min_lr)
 
         print("Initializing dataloader...")
         data = MetavoiceData(
@@ -132,6 +155,12 @@ class MetaVoiceTrainer:
         print("Starting training...")
         test_printed = False
         for iter_num in range(max_iters):
+
+            # determine and set the learning rate for this iteration
+            lr = get_lr(iter_num) if decay_lr else learning_rate
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
+
             for micro_step in range(gradient_accumulation_steps):
                 X, Y, spk_embds = data.get_batch('train', batch_size)
                 input_pos = torch.arange(0, block_size, dtype=torch.int, device=self._device)
@@ -144,15 +173,15 @@ class MetaVoiceTrainer:
                     print("^^^^Y[0]^^^^")
                     test_printed = True
 
-                # with autocast(dtype=self.precision):
-                # 5. Compute loss
-                logits, loss = self.model(
-                    X, 
-                    spk_embds, 
-                    input_pos,
-                    targets=Y,
-                    debug_mode=False,
-                )
+                with autocast(dtype=self.precision):
+                    # 5. Compute loss
+                    logits, loss = self.model(
+                        X, 
+                        spk_embds, 
+                        input_pos,
+                        targets=Y,
+                        debug_mode=False,
+                    )
                 
                 loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
 

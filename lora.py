@@ -112,23 +112,8 @@ class TransformerWithLoRA(nn.Module):
             if i == 1:
                 # Only inject LoRALinear into the first layer
                 break
-            layer.attention.wqkv = LoRALinear( # c_attn
-                in_features=layer.attention.wqkv.in_features,
-                out_features=layer.attention.wqkv.out_features,
-                bias=layer.attention.wqkv.bias == True,
-                lora_rank=rank,
-                lora_alpha=alpha,
-                lora_dropout=dropout
-            )
-
-            layer.attention.wo = LoRALinear( # c_proj
-                in_features=layer.attention.wo.in_features,
-                out_features=layer.attention.wo.out_features,
-                bias=layer.attention.wo.bias == True,
-                lora_rank=rank,
-                lora_alpha=alpha,
-                lora_dropout=dropout
-            )
+            layer.attention.wqkv = self._replace_with_lora(layer.attention.wqkv, rank, alpha, dropout)
+            layer.attention.wo = self._replace_with_lora(layer.attention.wo, rank, alpha, dropout)
 
         if training_mode:
             self.base_model = get_lora_model(self.base_model)
@@ -142,6 +127,22 @@ class TransformerWithLoRA(nn.Module):
     def setup_caches(self, *args, **kwargs):
         self.base_model.setup_caches(*args, **kwargs)
     
+    def _replace_with_lora(self, original_layer, rank, alpha, dropout):
+        # Create a new LoRALinear layer with the same configuration as the original layer
+        lora_layer = LoRALinear(
+            original_layer.in_features, 
+            original_layer.out_features, 
+            bias=original_layer.bias is not None, 
+            lora_rank=rank,
+            lora_alpha=alpha, 
+            lora_dropout=dropout
+        )
+        # Copy the original weights and biases
+        lora_layer.weight.data.copy_(original_layer.weight.data)
+        if original_layer.bias is not None:
+            lora_layer.bias.data.copy_(original_layer.bias.data)
+        return lora_layer
+
     def save_lora(self, path: str):
         torch.save(self.base_model.speaker_cond_pos.state_dict(), path)
     
