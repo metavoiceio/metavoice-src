@@ -11,14 +11,14 @@ from torch.optim import AdamW
 from dataloader import MetavoiceData
 from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
 from fam.llm.fast_inference_utils import _load_model, device_sync
-from fam.llm.utils import get_default_dtype
+from fam.llm.utils import get_default_dtype, get_device
 from lora import TransformerWithLoRA
 
 # Launch this (train.py) with:
 # FOR bfloat16:     "accelerate launch --mixed_precision=bf16 train.py"
 # FOR float16:      "accelerate launch --mixed_precision=f16 train.py"
 
-accelerator = Accelerator()
+# accelerator = Accelerator()
 
 class MetaVoiceTrainer:
     ENCODEC_BANDWIDTH = 6.0
@@ -34,8 +34,8 @@ class MetaVoiceTrainer:
         # NOTE: this needs to come first so that we don't change global state when we want to use
         # the torch.compiled-model.
         self._dtype = get_default_dtype()
-        # self._device = get_device()
-        self._device = str(accelerator.device)
+        self._device = get_device()
+        # self._device = str(accelerator.device)
         self._model_dir = 'models'
         # self._model_dir = snapshot_download(repo_id=model_name)
 
@@ -73,21 +73,21 @@ class MetaVoiceTrainer:
         
         # Add LoRA to model for finetuning
         self.model = TransformerWithLoRA(self.model)
-        self.model = self.model.to(self._device)
+        self.model = self.model.to(self._device, dtype=self.precision)
 
-    def train(self, training_name: str, epochs=100, learning_rate=1e-4):
+    def train(self, training_name: str, max_iters=1000, learning_rate=2e-4):
         # Hyperparameters
         # TODO(hyperparameters) add hyperparameters as parameters in function
         batch_size = 2
         validation_split = 0.1
-        save_epochs = 5 # Just disable for now
-        log_epochs = 5
-        eval_epochs = 20
-        weight_decay = 0.001
+        save_interval = 5
+        log_interval = 5
+        eval_interval = 20
+        weight_decay = 1e-1
         beta1 = 0.9
         beta2 = 0.95
         grad_clip = 1.0
-        gradient_accumulation_steps = 5 * 2
+        gradient_accumulation_steps = 32
         block_size = self.model.config.block_size # 2048 for metavoice-1b
 
         print("Initializing dataloader...")
@@ -99,6 +99,7 @@ class MetaVoiceTrainer:
             tokenizer=self.tokenizer,
             spkemb_model=self.smodel,
             device=self._device,
+            precision=self.precision,
         )
 
         print("Initializing optimizer and scaler...")
@@ -108,10 +109,11 @@ class MetaVoiceTrainer:
             weight_decay=weight_decay,
             betas=(beta1, beta2),
         )
+        scaler = torch.cuda.amp.GradScaler(enabled=(self.precision == torch.float16))
 
         # Prepare model, optimizer, and dataloader for mixed precision training
-        print("Preparing model, optimizer, and dataloader for mixed precision training...")
-        self.model, optimizer = accelerator.prepare(self.model, optimizer)
+        # print("Preparing model, optimizer, and dataloader for mixed precision training...")
+        # self.model, optimizer = accelerator.prepare(self.model, optimizer)
         
         # Put model in training mode
         print("Setting model to training mode...")
@@ -129,10 +131,10 @@ class MetaVoiceTrainer:
 
         print("Starting training...")
         test_printed = False
-        for epoch in range(epochs):
+        for iter_num in range(max_iters):
             for micro_step in range(gradient_accumulation_steps):
                 X, Y, spk_embds = data.get_batch('train', batch_size)
-                input_pos = torch.arange(block_size, device=self._device)
+                input_pos = torch.arange(0, block_size, dtype=torch.int, device=self._device)
                 
                 if not test_printed:
                     print(X[0])
@@ -142,49 +144,55 @@ class MetaVoiceTrainer:
                     print("^^^^Y[0]^^^^")
                     test_printed = True
 
-                with autocast(dtype=self.precision):
-                    # 5. Compute loss
-                    optimizer.zero_grad()
-                    logits, loss = self.model(
-                        X, 
-                        spk_embds, 
-                        input_pos,
-                        targets=Y,
-                        debug_mode=False,
-                    )
+                # with autocast(dtype=self.precision):
+                # 5. Compute loss
+                logits, loss = self.model(
+                    X, 
+                    spk_embds, 
+                    input_pos,
+                    targets=Y,
+                    debug_mode=False,
+                )
                 
                 loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
 
                 # 6. Backward pass
-                accelerator.backward(loss)
+                scaler.scale(loss).backward()
+                # accelerator.backward(loss)
 
             # 7. Clip the gradient
             if grad_clip != 0.0:
-                accelerator.unscale_gradients(optimizer)
-                accelerator.clip_grad_norm_(self.model.base_model.parameters(), grad_clip)
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
+                # accelerator.unscale_gradients(optimizer)
+                # accelerator.clip_grad_norm_(self.model.base_model.parameters(), grad_clip)
 
             # 8. Step optimizer
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
+            
+            # 9. Zero the gradients
+            optimizer.zero_grad()
 
-            # Print average loss every log_epochs
-            if (epoch + 1) % log_epochs == 0:
+            # Print average loss every log_interval
+            if (iter_num + 1) % log_interval == 0:
                 lossf = loss.item() * gradient_accumulation_steps
-                print(f'Epoch {epoch+1}, Loss: {lossf:.4f}')
+                print(f'iter_num {iter_num+1}, Loss: {lossf:.4f}')
             
-            # Save model every save_epochs
-            if (epoch + 1) % save_epochs == 0:
-                print(f'Saving LoRA at epoch {epoch+1}...')
-                lora_epoch_save_path = os.path.join(save_dir, f'lora_epoch_{epoch+1}.pt')
-                self.model.save_lora(lora_epoch_save_path)
-                print(f'Model saved to {lora_epoch_save_path}!')
+            # Save model every save_interval
+            if (iter_num + 1) % save_interval == 0:
+                print(f'Saving LoRA at iter_num {iter_num+1}...')
+                lora_iter_num_save_path = os.path.join(save_dir, f'lora_iter_num_{iter_num+1}.pt')
+                self.model.save_lora(lora_iter_num_save_path)
+                print(f'Model saved to {lora_iter_num_save_path}!')
             
-            if (epoch + 1) % eval_epochs == 0:
+            if (iter_num + 1) % eval_interval == 0:
                 # Evaluate model
                 print("Evaluating model...")
                 losses = self.estimate_loss(data)
                 train_loss = losses['train']
                 val_loss = losses['val']
-                print(f'Epoch {epoch+1}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+                print(f'iter_num {iter_num+1}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
 
         print("Training complete")
     

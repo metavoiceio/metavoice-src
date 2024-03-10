@@ -162,7 +162,7 @@ class Transformer(nn.Module):
 
     def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets: Tensor = None, debug_mode = False):
         # idx (B, S), spk_emb (B, E), input_pos (S)
-
+        
         mask = self.causal_mask[None, None, input_pos]
         x = (
             self.tok_embeddings(idx)
@@ -177,7 +177,7 @@ class Transformer(nn.Module):
         logits = self.output(x)
 
         if targets is not None:
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
             return logits, loss
 
         return logits, None

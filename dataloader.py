@@ -18,7 +18,7 @@ MBD_SAMPLE_RATE = 24000
 END_OF_AUDIO_TOKEN = 1024
 
 class MetavoiceData(Dataset):
-    def __init__(self, dataset_dir: str, block_size: int, validation_split: float, encodec_model: EncodecModel, tokenizer: TrainedBPETokeniser, spkemb_model: SpeakerEncoder, device: str):
+    def __init__(self, dataset_dir: str, block_size: int, validation_split: float, encodec_model: EncodecModel, tokenizer: TrainedBPETokeniser, spkemb_model: SpeakerEncoder, device: str, precision: torch.dtype):
         
         self.dataset_dir = dataset_dir
         self.block_size = block_size
@@ -27,6 +27,7 @@ class MetavoiceData(Dataset):
         self.tokenizer = tokenizer
         self.spkemb_model = spkemb_model
         self.device = device
+        self.precision = precision
 
         self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=END_OF_AUDIO_TOKEN)
 
@@ -175,4 +176,4 @@ class MetavoiceData(Dataset):
     def _extract_speaker_embeddings(self, wav_path: str):
         # For speaker embedding, you can also follow the code at:
         # https://github.com/metavoiceio/metavoice-src/blob/main/fam/llm/inference.py#L435
-        return get_cached_embedding(wav_path, self.spkemb_model)
+        return get_cached_embedding(wav_path, self.spkemb_model).to(self.device, dtype=self.precision)

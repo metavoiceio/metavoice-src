@@ -101,19 +101,21 @@ class LoRALinear(nn.Linear):
 
 
 class TransformerWithLoRA(nn.Module):
-    def __init__(self, base_model: Transformer, rank: int = 8, alpha: int = 16, dropout: float = 0.1, training_mode: bool = True):
+    def __init__(self, base_model: Transformer, rank: int = 8, alpha: int = 32, dropout: float = 0, training_mode: bool = True):
         super().__init__()
 
+        self.base_model = base_model
         self.config = base_model.config
 
         # LoRALinear injection into attention layers
-        for i, layer in enumerate(base_model.layers):
+        for i, layer in enumerate(self.base_model.layers):
             if i == 1:
                 # Only inject LoRALinear into the first layer
                 break
             layer.attention.wqkv = LoRALinear( # c_attn
                 in_features=layer.attention.wqkv.in_features,
                 out_features=layer.attention.wqkv.out_features,
+                bias=layer.attention.wqkv.bias == True,
                 lora_rank=rank,
                 lora_alpha=alpha,
                 lora_dropout=dropout
@@ -122,13 +124,14 @@ class TransformerWithLoRA(nn.Module):
             layer.attention.wo = LoRALinear( # c_proj
                 in_features=layer.attention.wo.in_features,
                 out_features=layer.attention.wo.out_features,
+                bias=layer.attention.wo.bias == True,
                 lora_rank=rank,
                 lora_alpha=alpha,
                 lora_dropout=dropout
             )
 
         if training_mode:
-            self.base_model = get_lora_model(base_model)
+            self.base_model = get_lora_model(self.base_model)
         
     def forward(self, idx: Tensor, spk_emb: Tensor, input_pos: Tensor, targets: Tensor = None, debug_mode = False):
         return self.base_model(idx, spk_emb, input_pos, targets, debug_mode)        
@@ -144,3 +147,4 @@ class TransformerWithLoRA(nn.Module):
     
     def load_lora(self, path: str):
         self.base_model.speaker_cond_pos.load_state_dict(torch.load(path))
+        self.base_model = self.base_model.to(dtype=self.base_model.config.dtype)
