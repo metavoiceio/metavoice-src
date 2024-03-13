@@ -225,8 +225,8 @@ def generate(
     return seq
 
 
-def encode_tokens(tokenizer, string, device="cuda"):
-    tokens = tokenizer.encode(string)
+def encode_tokens(tokenizer: TrainedBPETokeniser, text: str, device="cuda") -> torch.Tensor:
+    tokens = tokenizer.encode(text)
     return torch.tensor(tokens, dtype=torch.int, device=device)
 
 
@@ -301,7 +301,6 @@ def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision):
     tokenizer = TrainedBPETokeniser(**tokenizer_info)
 
     ###### SPEAKER EMBEDDER
-    # TODO: fix!
     smodel = SpeakerEncoder(
         weights_fpath=spk_emb_ckpt_path,
         device=device,
