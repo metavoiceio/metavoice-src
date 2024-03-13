@@ -36,6 +36,24 @@ ptdtype = {"float32": torch.float32, "tfloat32": torch.float32, "bfloat16": torc
 ]
 ctx = nullcontext() if device_type == "cpu" else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
+print(f"tokens per iteration will be: {tokens_per_iter:,}")
+
+ckpts_base_dir = pathlib.Path(__file__).resolve().parent / "ckpts"
+if not os.path.exists(ckpts_base_dir) and master_process:
+    raise Exception(f"ckpts dir {ckpts_base_dir} does not exist!")
+
+if master_process:
+    if "/" in out_dir:
+        raise Exception("out_dir should be just a name, not a path with slashes")
+
+    ckpts_save_dir = ckpts_base_dir / out_dir
+    os.makedirs(ckpts_save_dir, exist_ok=True)
+
+def get_globals_state():
+    """ Return entirety of configuration global state which can be used for logging. """
+    config_keys = [k for k, v in globals().items() if not k.startswith("_") and isinstance(v, (int, float, bool, str))]
+    return {k: globals()[k] for k in config_keys}  # will be useful for logging
+
 model_args: dict = dict(
     n_layer=n_layer,
     n_head=n_head,

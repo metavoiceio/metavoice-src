@@ -67,25 +67,6 @@ ddp = False
 ddp_world_size = 1
 tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * block_size
 
-print(f"tokens per iteration will be: {tokens_per_iter:,}")
-
-ckpts_base_dir = pathlib.Path(__file__).resolve().parent / "ckpts"
-if not os.path.exists(ckpts_base_dir) and master_process:
-    raise Exception(f"ckpts dir {ckpts_base_dir} does not exist!")
-
-if master_process:
-    if "/" in out_dir:
-        raise Exception("out_dir should be just a name, not a path with slashes")
-
-    ckpts_save_dir = ckpts_base_dir / out_dir
-    os.makedirs(ckpts_save_dir, exist_ok=True)
-
 causal = True
 bias: bool = False  # do we use bias inside LayerNorm and Linear layers?
 spk_emb_on_text: bool = True  # whether to add speaker embedding conditioning to text tokens or not
-
-
-def get_globals_state():
-    """ Return entirety of configuration global state which can be used for logging. """
-    config_keys = [k for k, v in globals().items() if not k.startswith("_") and isinstance(v, (int, float, bool, str))]
-    return {k: globals()[k] for k in config_keys}  # will be useful for logging
