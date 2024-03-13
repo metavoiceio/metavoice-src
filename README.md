@@ -78,10 +78,38 @@ poetry run python app.py
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
 4. [Google Collab Demo](https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb)
 
+## Finetuning
+We support finetuning the first stage LLM (see [Architecture section](#Architecture)).
+
+In order to finetune, we expect a "|"-delimited CSV dataset of the following format:
+
+```csv
+audio_files|captions
+./data/audio.wav|./data/caption.txt
+```
+
+Note that we don't perform any dataset overlap checks, so ensure that your train and val datasets are disjoint.
+
+Try it out using our sample datasets via:
+```bash
+poetry run finetune --train ./datasets/sample_dataset.csv --val ./datasets/sample_val_dataset.csv
+```
+
+### Configuration
+
+In order to set hyperparameters such as learning rate, what to freeze, etc, you
+can edit the [finetune_params.py](./fam/llm/config/finetune_params.py) file.
+
+We've got a light & optional integration with W&B that can be enabled via setting
+`wandb_log = True` & by installing the appropriate dependencies.
+
+```bash
+poetry install -E observable
+```
 
 ## Upcoming
 - [x] Faster inference ⚡
-- [ ] Fine-tuning code
+- [x] Fine-tuning code 📐
 - [ ] Synthesis of arbitrary length text
 
 

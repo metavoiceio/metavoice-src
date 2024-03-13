@@ -23,9 +23,16 @@ pydub = "^0.25.1"
 gradio = "^4.20.1"
 huggingface_hub = "^0.21.4"
 click = "^8.1.7"
+wandb = { version = "^0.16.4", optional = true }
 
 [tool.poetry.dev-dependencies]
 pytest = "^8.0.2"
+
+[tool.poetry.extras]
+observable = ["wandb"]
+
+[tool.poetry.scripts]
+finetune = "fam.llm.finetune:main"
 
 [build-system]
 requires = ["poetry-core"]
