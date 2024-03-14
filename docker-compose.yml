@@ -51,7 +51,7 @@ services:
   ui:
     <<: *common-settings
     container_name: metavoice-ui
-    entrypoint: [ "python3.10", "app.py" ]
+    entrypoint: [ "poetry", "run", "python", "app.py" ]
     ports:
       - 7861:7861
     healthcheck:

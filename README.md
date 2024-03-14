@@ -4,7 +4,7 @@
 <p>
 <a href="https://ttsdemo.themetavoice.xyz/"><b>Playground</b></a> | <a target="_blank" style="display: inline-block; vertical-align: middle" href="https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
-</a> 
+</a>
 </p>
 
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
@@ -29,11 +29,12 @@ Server
 docker-compose up -d server && docker-compose ps && docker-compose logs -f
 ```
 
-## Installation  
+## Installation
 
 **Pre-requisites:**
 - GPU VRAM >=12GB
 - Python >=3.10,<3.12
+- pipx ([installation instructions](https://pipx.pypa.io/stable/installation/))
 
 **Environment setup**
 ```bash
@@ -47,10 +48,13 @@ rm -rf ffmpeg-git-*
 
 # install rust if not installed (ensure you've restarted your terminal after installation)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# install poetry if not installed (ensure you've restarted your terminal after installation)
+pipx install poetry
 
-pip install -r requirements.txt
-pip install --upgrade torch torchaudio  # for torch.compile improvements
-pip install -e .
+# if running from Linux, keyring backend can hang on `poetry install`. This prevents that.
+export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
+
+poetry install && poetry run pip install torch==2.2.1 torchaudio==2.2.1
 ```
 
 ## Usage
@@ -58,7 +62,7 @@ pip install -e .
 ```bash
 # You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference.  This will degrade the quality of the audio. 
 # Note: int8 is slower than bf16/fp16 for undebugged reasons. If you want fast, try int4 which is roughly 2x faster than bf16/fp16.
-python -i fam/llm/fast_inference.py 
+poetry run python -i fam/llm/fast_inference.py
 
 # Run e.g. of API usage within the interactive python session
 tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-source foundational audio model.", spk_ref_path="assets/bria.mp3")
@@ -71,17 +75,45 @@ tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-s
 ```bash
 # You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. This will degrade the quality of the audio. 
 # Note: int8 is slower than bf16/fp16 for undebugged reasons. If you want fast, try int4 which is roughly 2x faster than bf16/fp16.
-python serving.py
-python app.py 
+poetry run python serving.py
+poetry run python app.py
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
 4. [Google Collab Demo](https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb)
 
+## Finetuning
+We support finetuning the first stage LLM (see [Architecture section](#Architecture)).
+
+In order to finetune, we expect a "|"-delimited CSV dataset of the following format:
+
+```csv
+audio_files|captions
+./data/audio.wav|./data/caption.txt
+```
+
+Note that we don't perform any dataset overlap checks, so ensure that your train and val datasets are disjoint.
+
+Try it out using our sample datasets via:
+```bash
+poetry run finetune --train ./datasets/sample_dataset.csv --val ./datasets/sample_val_dataset.csv
+```
+
+### Configuration
+
+In order to set hyperparameters such as learning rate, what to freeze, etc, you
+can edit the [finetune_params.py](./fam/llm/config/finetune_params.py) file.
+
+We've got a light & optional integration with W&B that can be enabled via setting
+`wandb_log = True` & by installing the appropriate dependencies.
+
+```bash
+poetry install -E observable
+```
 
 ## Upcoming
 - [x] Faster inference ⚡
-- [ ] Fine-tuning code
+- [x] Fine-tuning code 📐
 - [ ] Synthesis of arbitrary length text
 
 
@@ -95,11 +127,11 @@ We predict EnCodec tokens from text, and speaker information. This is then diffu
   - Note that we've skipped predicting semantic tokens as done in other works, as we found that this isn't strictly necessary.
 * We use a non-causal (encoder-style) transformer to predict the rest of the 6 hierarchies from the first two hierarchies. This is a super small model (~10Mn parameters), and has extensive zero-shot generalisation to most speakers we've tried. Since it's non-causal, we're also able to predict all the timesteps in parallel.
 * We use multi-band diffusion to generate waveforms from the EnCodec tokens. We noticed that the speech is clearer than using the original RVQ decoder or VOCOS. However, the diffusion at waveform level leaves some background artifacts which are quite unpleasant to the ear. We clean this up in the next step.
-* We use DeepFilterNet to clear up the artifacts introduced by the multi-band diffusion. 
+* We use DeepFilterNet to clear up the artifacts introduced by the multi-band diffusion.
 
 ## Optimizations
-The model supports: 
-1. KV-caching via Flash Decoding 
+The model supports:
+1. KV-caching via Flash Decoding
 2. Batching (including texts of different lengths)
 
 ## Contribute
