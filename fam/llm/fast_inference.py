@@ -3,11 +3,12 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
+from typing import Literal, Optional
 
 import librosa
 import torch
+import tyro
 from huggingface_hub import snapshot_download
-from typing import Optional, Literal
 
 from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
 from fam.llm.decoders import EncodecDecoder
@@ -28,27 +29,30 @@ from fam.llm.utils import (
     get_device,
     normalize_text,
 )
-import tyro
-
 
 
 class TTS:
     END_OF_AUDIO_TOKEN = 1024
 
     def __init__(
-        self, model_name: str = "metavoiceio/metavoice-1B-v0.1", *, seed: int = 1337, output_dir: str = "outputs", quantisation_mode: Optional[Literal["int4", "int8"]] = None
+        self,
+        model_name: str = "metavoiceio/metavoice-1B-v0.1",
+        *,
+        seed: int = 1337,
+        output_dir: str = "outputs",
+        quantisation_mode: Optional[Literal["int4", "int8"]] = None,
     ):
         """
         Initialise the TTS model.
-        
+
         Args:
             model_name: refers to the model identifier from the Hugging Face Model Hub (https://huggingface.co/metavoiceio)
             seed: random seed for reproducibility
             output_dir: directory to save output files
-            quantisation_mode: quantisation mode for first-stage LLM. 
+            quantisation_mode: quantisation mode for first-stage LLM.
                 Options:
-                - None for no quantisation (bf16 or fp16 based on device), 
-                - int4 for int4 weight-only quantisation, 
+                - None for no quantisation (bf16 or fp16 based on device),
+                - int4 for int4 weight-only quantisation,
                 - int8 for int8 weight-only quantisation.
         """
 

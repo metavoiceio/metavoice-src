@@ -25,14 +25,16 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import itertools
 import time
+import warnings
 from pathlib import Path
-from typing import Optional, Tuple, Literal
+from typing import Literal, Optional, Tuple
 
 import torch
 import torch._dynamo.config
 import torch._inductor.config
 import tqdm
-from fam.llm.fast_quantize import WeightOnlyInt8QuantHandler, WeightOnlyInt4QuantHandler
+
+from fam.llm.fast_quantize import WeightOnlyInt4QuantHandler, WeightOnlyInt8QuantHandler
 
 
 def device_sync(device):
@@ -231,7 +233,9 @@ def encode_tokens(tokenizer, string, device="cuda"):
     return torch.tensor(tokens, dtype=torch.int, device=device)
 
 
-def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision, quantisation_mode: Optional[Literal["int4", "int8"]] = None):
+def _load_model(
+    checkpoint_path, spk_emb_ckpt_path, device, precision, quantisation_mode: Optional[Literal["int4", "int8"]] = None
+):
     ##### MODEL
     with torch.device("meta"):
         model = Transformer.from_name("metavoice-1B")
@@ -275,8 +279,11 @@ def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision, quantisat
 
     model.load_state_dict(state_dict, assign=True)
     model = model.to(device=device, dtype=torch.bfloat16)
-    
+
     if quantisation_mode == "int8":
+        warnings.warn(
+            "int8 quantisation is slower than bf16/fp16 for undebugged reasons! Please set optimisation_mode to `None` or to `int4`."
+        )
         simple_quantizer = WeightOnlyInt8QuantHandler(model)
         quantized_state_dict = simple_quantizer.create_quantized_state_dict()
         model = simple_quantizer.convert_for_runtime()
@@ -284,15 +291,15 @@ def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision, quantisat
         model = model.to(device=device, dtype=torch.bfloat16)
         torch.cuda.empty_cache()
     elif quantisation_mode == "int4":
-        simple_quantizer = WeightOnlyInt4QuantHandler(model, groupsize = 128)
+        simple_quantizer = WeightOnlyInt4QuantHandler(model, groupsize=128)
         quantized_state_dict = simple_quantizer.create_quantized_state_dict()
-        model = simple_quantizer.convert_for_runtime(use_cuda = True)
+        model = simple_quantizer.convert_for_runtime(use_cuda=True)
         model.load_state_dict(quantized_state_dict, assign=True)
         model = model.to(device=device, dtype=torch.bfloat16)
         torch.cuda.empty_cache()
     elif quantisation_mode is not None:
         raise Exception(f"Invalid quantisation mode {quantisation_mode}! Must be either 'int4' or 'int8'!")
-    
+
     ###### TOKENIZER
     tokenizer_info = checkpoint.get("meta", {}).get("tokenizer", {})
     tokenizer = TrainedBPETokeniser(**tokenizer_info)
@@ -316,7 +323,7 @@ def build_model(
     compile_prefill: bool = False,
     compile: bool = True,
     device: str = "cuda",
-    quantisation_mode: Optional[Literal["int4", "int8"]] = None
+    quantisation_mode: Optional[Literal["int4", "int8"]] = None,
 ):
     assert checkpoint_path.is_file(), checkpoint_path
 
@@ -324,7 +331,9 @@ def build_model(
 
     print("Loading model ...")
     t0 = time.time()
-    model, tokenizer, smodel = _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision, quantisation_mode=quantisation_mode)
+    model, tokenizer, smodel = _load_model(
+        checkpoint_path, spk_emb_ckpt_path, device, precision, quantisation_mode=quantisation_mode
+    )
 
     device_sync(device=device)  # MKG
     print(f"Time to load model: {time.time() - t0:.02f} seconds")

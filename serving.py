@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 import fastapi
 import fastapi.middleware.cors
@@ -37,7 +37,7 @@ class ServingConfig:
     """Random seed for sampling."""
 
     port: int = 58003
-    
+
     quantisation_mode: Optional[Literal["int4", "int8"]] = None
 
 

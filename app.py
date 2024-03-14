@@ -7,10 +7,10 @@ if project_root not in sys.path:
 
 
 import gradio as gr
+import tyro
 
 from fam.llm.fast_inference import TTS
 from fam.llm.utils import check_audio_file
-import tyro
 
 #### setup model
 TTS_MODEL = tyro.cli(TTS)
