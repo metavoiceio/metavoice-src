@@ -56,6 +56,7 @@ pip install -e .
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/fast_inference.py)
 ```bash
+# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. 
 python -i fam/llm/fast_inference.py 
 
 # Run e.g. of API usage within the interactive python session
@@ -67,6 +68,7 @@ tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-s
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](serving.py) or [web UI](app.py)
 ```bash
+# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. 
 python serving.py
 python app.py 
 ```

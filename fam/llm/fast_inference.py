@@ -7,6 +7,7 @@ from pathlib import Path
 import librosa
 import torch
 from huggingface_hub import snapshot_download
+from typing import Optional, Literal
 
 from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
 from fam.llm.decoders import EncodecDecoder
@@ -27,16 +28,28 @@ from fam.llm.utils import (
     get_device,
     normalize_text,
 )
+import tyro
+
 
 
 class TTS:
     END_OF_AUDIO_TOKEN = 1024
 
     def __init__(
-        self, model_name: str = "metavoiceio/metavoice-1B-v0.1", *, seed: int = 1337, output_dir: str = "outputs"
+        self, model_name: str = "metavoiceio/metavoice-1B-v0.1", *, seed: int = 1337, output_dir: str = "outputs", quantisation_mode: Optional[Literal["int4", "int8"]] = None
     ):
         """
-        model_name (str): refers to the model identifier from the Hugging Face Model Hub (https://huggingface.co/metavoiceio)
+        Initialise the TTS model.
+        
+        Args:
+            model_name: refers to the model identifier from the Hugging Face Model Hub (https://huggingface.co/metavoiceio)
+            seed: random seed for reproducibility
+            output_dir: directory to save output files
+            quantisation_mode: quantisation mode for first-stage LLM. 
+                Options:
+                - None for no quantisation (bf16 or fp16 based on device), 
+                - int4 for int4 weight-only quantisation, 
+                - int8 for int8 weight-only quantisation.
         """
 
         # NOTE: this needs to come first so that we don't change global state when we want to use
@@ -73,6 +86,7 @@ class TTS:
             device=self._device,
             compile=True,
             compile_prefill=True,
+            quantisation_mode=quantisation_mode,
         )
 
     def synthesise(self, text: str, spk_ref_path: str, top_p=0.95, guidance_scale=3.0, temperature=1.0) -> str:
@@ -140,4 +154,4 @@ class TTS:
 
 
 if __name__ == "__main__":
-    tts = TTS()
+    tts = tyro.cli(TTS)

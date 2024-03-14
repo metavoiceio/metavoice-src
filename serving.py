@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 
 import fastapi
 import fastapi.middleware.cors
@@ -37,6 +37,8 @@ class ServingConfig:
     """Random seed for sampling."""
 
     port: int = 58003
+    
+    quantisation_mode: Optional[Literal["int4", "int8"]] = None
 
 
 # Singleton
@@ -127,7 +129,7 @@ if __name__ == "__main__":
     logging.root.setLevel(logging.INFO)
 
     GlobalState.config = tyro.cli(ServingConfig)
-    GlobalState.tts = TTS(seed=GlobalState.config.seed)
+    GlobalState.tts = TTS(seed=GlobalState.config.seed, quantisation_mode=GlobalState.config.quantisation_mode)
 
     app.add_middleware(
         fastapi.middleware.cors.CORSMiddleware,

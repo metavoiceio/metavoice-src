@@ -10,9 +10,10 @@ import gradio as gr
 
 from fam.llm.fast_inference import TTS
 from fam.llm.utils import check_audio_file
+import tyro
 
 #### setup model
-TTS_MODEL = TTS()
+TTS_MODEL = tyro.cli(TTS)
 
 #### setup interface
 RADIO_CHOICES = ["Preset voices", "Upload target voice (atleast 30s)"]
