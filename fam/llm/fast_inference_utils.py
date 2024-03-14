@@ -284,6 +284,9 @@ def _load_model(
         warnings.warn(
             "int8 quantisation is slower than bf16/fp16 for undebugged reasons! Please set optimisation_mode to `None` or to `int4`."
         )
+        warnings.warn(
+            "quantisation will degrade the quality of the audio! Please set optimisation_mode to `None` for best quality."
+        )
         simple_quantizer = WeightOnlyInt8QuantHandler(model)
         quantized_state_dict = simple_quantizer.create_quantized_state_dict()
         model = simple_quantizer.convert_for_runtime()
@@ -291,6 +294,9 @@ def _load_model(
         model = model.to(device=device, dtype=torch.bfloat16)
         torch.cuda.empty_cache()
     elif quantisation_mode == "int4":
+        warnings.warn(
+            "quantisation will degrade the quality of the audio! Please set optimisation_mode to `None` for best quality."
+        )
         simple_quantizer = WeightOnlyInt4QuantHandler(model, groupsize=128)
         quantized_state_dict = simple_quantizer.create_quantized_state_dict()
         model = simple_quantizer.convert_for_runtime(use_cuda=True)

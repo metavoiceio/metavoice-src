@@ -56,7 +56,7 @@ pip install -e .
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/fast_inference.py)
 ```bash
-# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. 
+# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference.  This will degrade the quality of the audio. 
 # Note: int8 is slower than bf16/fp16 for undebugged reasons. If you want fast, try int4 which is roughly 2x faster than bf16/fp16.
 python -i fam/llm/fast_inference.py 
 
@@ -69,7 +69,7 @@ tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-s
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](serving.py) or [web UI](app.py)
 ```bash
-# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. 
+# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. This will degrade the quality of the audio. 
 # Note: int8 is slower than bf16/fp16 for undebugged reasons. If you want fast, try int4 which is roughly 2x faster than bf16/fp16.
 python serving.py
 python app.py 
