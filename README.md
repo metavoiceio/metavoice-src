@@ -76,7 +76,7 @@ poetry run python app.py
 ```
 
 3. Use it via [Hugging Face](https://huggingface.co/metavoiceio)
-4. [Google Collab Demo](https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb)
+4. [Google Colab Demo](https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb)
 
 ## Finetuning
 We support finetuning the first stage LLM (see [Architecture section](#Architecture)).
