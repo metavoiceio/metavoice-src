@@ -292,6 +292,7 @@ def _load_model(
         model = simple_quantizer.convert_for_runtime()
         model.load_state_dict(quantized_state_dict, assign=True)
         model = model.to(device=device, dtype=torch.bfloat16)
+        # TODO: int8/int4 doesn't decrease VRAM usage substantially... fix that (might be linked to kv-cache)
         torch.cuda.empty_cache()
     elif quantisation_mode == "int4":
         warnings.warn(
