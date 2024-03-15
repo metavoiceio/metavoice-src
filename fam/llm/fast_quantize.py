@@ -167,6 +167,7 @@ class WeightOnlyInt8QuantHandler:
     def create_quantized_state_dict(self):
         cur_state_dict = self.mod.state_dict()
         for fqn, mod in self.mod.named_modules():
+            # TODO: quantise RMSNorm as well.
             if isinstance(mod, torch.nn.Linear):
                 int8_weight, scales, _ = dynamically_quantize_per_channel(mod.weight.float(), -128, 127, torch.int8)
                 cur_state_dict[f"{fqn}.weight"] = int8_weight.to("cpu")
