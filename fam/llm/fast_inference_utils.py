@@ -25,13 +25,16 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import itertools
 import time
+import warnings
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple
 
 import torch
 import torch._dynamo.config
 import torch._inductor.config
 import tqdm
+
+from fam.llm.fast_quantize import WeightOnlyInt4QuantHandler, WeightOnlyInt8QuantHandler
 
 
 def device_sync(device):
@@ -225,32 +228,17 @@ def generate(
     return seq
 
 
-def encode_tokens(tokenizer, string, device="cuda"):
-    tokens = tokenizer.encode(string)
+def encode_tokens(tokenizer: TrainedBPETokeniser, text: str, device="cuda") -> torch.Tensor:
+    tokens = tokenizer.encode(text)
     return torch.tensor(tokens, dtype=torch.int, device=device)
 
 
-def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision):
+def _load_model(
+    checkpoint_path, spk_emb_ckpt_path, device, precision, quantisation_mode: Optional[Literal["int4", "int8"]] = None
+):
     ##### MODEL
     with torch.device("meta"):
         model = Transformer.from_name("metavoice-1B")
-
-    # TODO(quantization): enable
-    # if "int8" in str(checkpoint_path):
-    #     print("Using int8 weight-only quantization!")
-    #     from quantize import WeightOnlyInt8QuantHandler
-    #     simple_quantizer = WeightOnlyInt8QuantHandler(model)
-    #     model = simple_quantizer.convert_for_runtime()
-    # from quantize import WeightOnlyInt8QuantHandler
-
-    # if "int4" in str(checkpoint_path):
-    #     print("Using int4 quantization!")
-    #     path_comps = checkpoint_path.name.split(".")
-    #     assert path_comps[-2].startswith("g")
-    #     groupsize = int(path_comps[-2][1:])
-    #     from quantize import WeightOnlyInt4QuantHandler
-    #     simple_quantizer = WeightOnlyInt4QuantHandler(model, groupsize)
-    #     model = simple_quantizer.convert_for_runtime()
 
     checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=False)
     state_dict = checkpoint["model"]
@@ -290,18 +278,40 @@ def _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision):
             k = k.replace(".mlp.c_proj.", ".feed_forward.w2.")
 
     model.load_state_dict(state_dict, assign=True)
-    # simple_quantizer = WeightOnlyInt8QuantHandler(model)
-    # quantized_state_dict = simple_quantizer.create_quantized_state_dict()
-    # model = simple_quantizer.convert_for_runtime()
-    # model.load_state_dict(quantized_state_dict, assign=True)
-    model = model.to(device=device, dtype=precision)
+    model = model.to(device=device, dtype=torch.bfloat16)
+
+    if quantisation_mode == "int8":
+        warnings.warn(
+            "int8 quantisation is slower than bf16/fp16 for undebugged reasons! Please set optimisation_mode to `None` or to `int4`."
+        )
+        warnings.warn(
+            "quantisation will degrade the quality of the audio! Please set optimisation_mode to `None` for best quality."
+        )
+        simple_quantizer = WeightOnlyInt8QuantHandler(model)
+        quantized_state_dict = simple_quantizer.create_quantized_state_dict()
+        model = simple_quantizer.convert_for_runtime()
+        model.load_state_dict(quantized_state_dict, assign=True)
+        model = model.to(device=device, dtype=torch.bfloat16)
+        # TODO: int8/int4 doesn't decrease VRAM usage substantially... fix that (might be linked to kv-cache)
+        torch.cuda.empty_cache()
+    elif quantisation_mode == "int4":
+        warnings.warn(
+            "quantisation will degrade the quality of the audio! Please set optimisation_mode to `None` for best quality."
+        )
+        simple_quantizer = WeightOnlyInt4QuantHandler(model, groupsize=128)
+        quantized_state_dict = simple_quantizer.create_quantized_state_dict()
+        model = simple_quantizer.convert_for_runtime(use_cuda=True)
+        model.load_state_dict(quantized_state_dict, assign=True)
+        model = model.to(device=device, dtype=torch.bfloat16)
+        torch.cuda.empty_cache()
+    elif quantisation_mode is not None:
+        raise Exception(f"Invalid quantisation mode {quantisation_mode}! Must be either 'int4' or 'int8'!")
 
     ###### TOKENIZER
     tokenizer_info = checkpoint.get("meta", {}).get("tokenizer", {})
     tokenizer = TrainedBPETokeniser(**tokenizer_info)
 
     ###### SPEAKER EMBEDDER
-    # TODO: fix!
     smodel = SpeakerEncoder(
         weights_fpath=spk_emb_ckpt_path,
         device=device,
@@ -319,6 +329,7 @@ def build_model(
     compile_prefill: bool = False,
     compile: bool = True,
     device: str = "cuda",
+    quantisation_mode: Optional[Literal["int4", "int8"]] = None,
 ):
     assert checkpoint_path.is_file(), checkpoint_path
 
@@ -326,7 +337,9 @@ def build_model(
 
     print("Loading model ...")
     t0 = time.time()
-    model, tokenizer, smodel = _load_model(checkpoint_path, spk_emb_ckpt_path, device, precision)
+    model, tokenizer, smodel = _load_model(
+        checkpoint_path, spk_emb_ckpt_path, device, precision, quantisation_mode=quantisation_mode
+    )
 
     device_sync(device=device)  # MKG
     print(f"Time to load model: {time.time() - t0:.02f} seconds")

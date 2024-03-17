@@ -112,9 +112,9 @@ class Model:
                 self.checkpoint_config = checkpoint["config"]
 
                 self.meta = checkpoint["meta"]
-                load_meta = True
+                self.load_meta = True
 
-            if load_meta:
+            if self.load_meta:
                 self.use_bpe_tokenizer = "stoi" not in self.meta or "itos" not in self.meta
                 self.speaker_cond = self.meta.get("speaker_cond")
 
@@ -647,7 +647,7 @@ class SamplingControllerConfig:
     """Guidance scale for sampling: (speaker conditioning guidance_scale, prompt conditioning guidance scale)."""
 
     batch_size: int = 128
-    """Batch size to use for sampling. Note that the batch size gets doubled when guidance is used. For H100, and 1B model, 
+    """Batch size to use for sampling. Note that the batch size gets doubled when guidance is used. For H100, and 1B model,
     1 w/ guidance and 1 w/o guidance work well (without kv-caching). With kv-caching, 128 (w/o guidance) and
     64 (w/ guidance) works well."""
 

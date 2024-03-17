@@ -45,10 +45,7 @@ def normalize_text(text: str) -> str:
         non_bpe_points = [(c, ord(c)) for c in non_bpe_chars]
         raise ValueError(f"Non-supported character found: {non_bpe_points}")
 
-    text = text.replace("\t", " ")
-    text = text.replace("\n", " ")
-    text = text.replace("*", " ")
-    text = text.strip()
+    text = text.replace("\t", " ").replace("\n", " ").replace("\r", " ").replace("*", " ").strip()
     text = re.sub("\s\s+", " ", text)  # remove multiple spaces
     return text
 
