@@ -18,11 +18,9 @@ TTS_MODEL = TTS()
 RADIO_CHOICES = ["Preset voices", "Upload target voice (atleast 30s)"]
 MAX_CHARS = 220
 PRESET_VOICES = {
-    # female
-    "Bria": "https://cdn.themetavoice.xyz/speakers%2Fbria.mp3",
-    # male
+    "Jacob": "https://cdn.themetavoice.xyz/speakers/jacob.mp3",
+    "Bria": "https://cdn.themetavoice.xyz/speakers/bria.mp3",
     "Alex": "https://cdn.themetavoice.xyz/speakers/alex.mp3",
-    "Jacob": "https://cdn.themetavoice.xyz/speakers/jacob.wav",
 }
 
 

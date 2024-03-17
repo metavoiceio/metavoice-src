@@ -1,4 +1,6 @@
+import json
 import os
+import pathlib
 import shutil
 import tempfile
 import time
@@ -133,6 +135,19 @@ class TTS:
         duration_s = librosa.get_duration(y=audio, sr=sr)
         print(f"\nTotal time to synth (s): {time_to_synth_s}")
         print(f"Real-time factor: {time_to_synth_s / duration_s:.2f}")
+
+        # save metadata
+        json.dump(
+            {
+                "speaker": spk_ref_path,
+                "text": text,
+                "top_p": top_p,
+                "guidance_scale": guidance_scale,
+                "temperature": temperature,
+                "output": str(wav_file) + ".wav",
+            },
+            pathlib.Path(str(wav_file) + ".json").open("w"),
+        )
 
         return str(wav_file) + ".wav"
 
