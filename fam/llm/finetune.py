@@ -40,7 +40,8 @@ print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
 ckpts_base_dir = pathlib.Path(__file__).resolve().parent / "ckpts"
 if not os.path.exists(ckpts_base_dir) and master_process:
-    raise Exception(f"ckpts dir {ckpts_base_dir} does not exist!")
+    print("Checkpoints directory didn't exist, creating...")
+    ckpts_base_dir.mkdir(parents=True)
 
 if master_process:
     if "/" in out_dir:

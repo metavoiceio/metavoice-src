@@ -1,11 +1,15 @@
 # MetaVoice-1B
 
 
-<p>
-<a href="https://ttsdemo.themetavoice.xyz/"><b>Playground</b></a> | <a target="_blank" style="display: inline-block; vertical-align: middle" href="https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb">
+
+[![Playground](https://img.shields.io/static/v1?label=Try&message=Playground&color=fc4982&url=https://ttsdemo.themetavoice.xyz/)](https://ttsdemo.themetavoice.xyz/)
+<a target="_blank" style="display: inline-block; vertical-align: middle" href="https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
-</p>
+[![](https://dcbadge.vercel.app/api/server/Cpy6U3na8Z?style=flat&compact=True)](https://discord.gg/tbTbkGEgJM) 
+[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/OnusFM.svg?style=social&label=@metavoiceio)](https://twitter.com/metavoiceio)
+
+
 
 MetaVoice-1B is a 1.2B parameter base model trained on 100K hours of speech for TTS (text-to-speech). It has been built with the following priorities:
 * **Emotional speech rhythm and tone** in English.
