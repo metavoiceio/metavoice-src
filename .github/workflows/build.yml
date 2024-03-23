@@ -1,0 +1,34 @@
+name: Poetry Install Matrix
+
+on:
+  push:
+    branches: '**'
+  # pull_request:
+  #   branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.10, 3.11]
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      run: |
+        curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python -
+
+    - name: Configure Poetry
+      run: |
+        echo "$HOME/.poetry/bin" >> $GITHUB_PATH
+        poetry config virtualenvs.in-project true
+    - name: Install dependencies
+      run: |
+        poetry install && poetry run pip install torch==2.2.1 torchaudio==2.2.1
