@@ -55,9 +55,14 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # install poetry if not installed (ensure you've restarted your terminal after installation)
 pipx install poetry
 
+# disable any conda envs that might interfere with poetry's venv
+conda deactivate
+
 # if running from Linux, keyring backend can hang on `poetry install`. This prevents that.
 export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 
+# pip's dependency resolver will complain, this is temporary expected behaviour
+# full inference & finetuning functionality will still be available
 poetry install && poetry run pip install torch==2.2.1 torchaudio==2.2.1
 ```
 
