@@ -2,9 +2,9 @@ name: Poetry Install Matrix
 
 on:
   push:
-    branches: '**'
-  # pull_request:
-  #   branches: [ main ]
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build:
