@@ -41,6 +41,7 @@ class TTS:
         seed: int = 1337,
         output_dir: str = "outputs",
         quantisation_mode: Optional[Literal["int4", "int8"]] = None,
+        first_stage_path: Optional[str] = None,
     ):
         """
         Initialise the TTS model.
@@ -54,6 +55,7 @@ class TTS:
                 - None for no quantisation (bf16 or fp16 based on device),
                 - int4 for int4 weight-only quantisation,
                 - int8 for int8 weight-only quantisation.
+            first_stage_path: path to first-stage LLM checkpoint. If provided, this will override the one grabbed from Hugging Face via `model_name`.
         """
 
         # NOTE: this needs to come first so that we don't change global state when we want to use
@@ -64,6 +66,9 @@ class TTS:
         self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=self.END_OF_AUDIO_TOKEN)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        if first_stage_path:
+            print(f"Overriding first stage checkpoint via provided model: {first_stage_path}")
+        first_stage_ckpt = first_stage_path or f"{self._model_dir}/first_stage.pt"
 
         second_stage_ckpt_path = f"{self._model_dir}/second_stage.pt"
         config_second_stage = InferenceConfig(
@@ -85,7 +90,7 @@ class TTS:
         self.precision = {"float16": torch.float16, "bfloat16": torch.bfloat16}[self._dtype]
         self.model, self.tokenizer, self.smodel, self.model_size = build_model(
             precision=self.precision,
-            checkpoint_path=Path(f"{self._model_dir}/first_stage.pt"),
+            checkpoint_path=Path(first_stage_ckpt),
             spk_emb_ckpt_path=Path(f"{self._model_dir}/speaker_encoder.pt"),
             device=self._device,
             compile=True,
