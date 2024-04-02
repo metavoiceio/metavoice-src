@@ -52,6 +52,14 @@ rm -rf ffmpeg-git-*
 
 # install rust if not installed (ensure you've restarted your terminal after installation)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Project dependencies installation
+1. [Using poetry](#using-poetry-recommended)
+2. [Using pip/conda](#using-pipconda)
+
+#### Using poetry (recommended)
+```bash
 # install poetry if not installed (ensure you've restarted your terminal after installation)
 pipx install poetry
 
@@ -64,6 +72,16 @@ export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 # pip's dependency resolver will complain, this is temporary expected behaviour
 # full inference & finetuning functionality will still be available
 poetry install && poetry run pip install torch==2.2.1 torchaudio==2.2.1
+```
+
+#### Using pip/conda
+NOTE 1: When raising issues, we'll ask you to try with poetry first.
+NOTE 2: All commands in this README use `poetry` by default, so you can just remove any `poetry run`.
+
+```bash
+pip install -r requirements.txt
+pip install torch==2.2.1 torchaudio==2.2.1
+pip install -e .
 ```
 
 ## Usage

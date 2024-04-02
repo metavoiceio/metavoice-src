@@ -26,6 +26,7 @@ click = "^8.1.7"
 wandb = { version = "^0.16.4", optional = true }
 
 [tool.poetry.dev-dependencies]
+pre-commit = "^3.7.0"
 pytest = "^8.0.2"
 
 [tool.poetry.extras]
