@@ -55,6 +55,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 ### Project dependencies installation
+1. [Using poetry](#using-poetry-recommended)
+2. [Using pip/conda](#using-pipconda)
+
 #### Using poetry (recommended)
 ```bash
 # install poetry if not installed (ensure you've restarted your terminal after installation)
