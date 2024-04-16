@@ -4,8 +4,8 @@ Module responsible for finetuning the first stage LLM.
 
 import itertools
 import math
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import click
@@ -19,7 +19,12 @@ from fam.llm.loaders.training_data import DynamicComputeDataset
 from fam.llm.model import GPT, GPTConfig
 from fam.llm.preprocessing.audio_token_mode import get_params_for_mode
 from fam.llm.preprocessing.data_pipeline import get_training_tuple
+from fam.llm.utils import hash_dictionary
+from fam.telemetry import TelemetryEvent
+from fam.telemetry.posthog import PosthogClient
 
+# see fam/telemetry/README.md for more information
+posthog = PosthogClient()
 
 dtype: Literal["bfloat16", "float16", "tfloat32", "float32"] = (
     "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16"
@@ -50,10 +55,12 @@ if master_process:
     ckpts_save_dir = ckpts_base_dir / out_dir
     os.makedirs(ckpts_save_dir, exist_ok=True)
 
+
 def get_globals_state():
-    """ Return entirety of configuration global state which can be used for logging. """
+    """Return entirety of configuration global state which can be used for logging."""
     config_keys = [k for k, v in globals().items() if not k.startswith("_") and isinstance(v, (int, float, bool, str))]
     return {k: globals()[k] for k in config_keys}  # will be useful for logging
+
 
 model_args: dict = dict(
     n_layer=n_layer,
@@ -71,6 +78,7 @@ model_args: dict = dict(
     attn_kernel_type=attn_kernel_type,
     swiglu_multiple_of=swiglu_multiple_of,
 )  # start with model_args from command line
+
 
 def strip_prefix(state_dict: Dict[str, Any], unwanted_prefix: str):
     # TODO: this also appears in fast_inference_utils._load_model, it should be moved to a common place.
@@ -146,19 +154,13 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
         allow_ops_in_compiled_graph()
         model = torch.compile(model)  # type: ignore
 
-    def estimate_loss(dataset, iters: int=eval_iters):
-        """ Estimate loss on a dataset by running on `iters` batches. """
+    def estimate_loss(dataset, iters: int = eval_iters):
+        """Estimate loss on a dataset by running on `iters` batches."""
         if dataset is None:
             return torch.nan
         losses = []
         for _, batch in zip(tqdm(range(iters)), dataset):
-            X, Y, SE = get_training_tuple(
-                batch,
-                causal,
-                num_codebooks,
-                speaker_cond,
-                device
-            )
+            X, Y, SE = get_training_tuple(batch, causal, num_codebooks, speaker_cond, device)
             with ctx:
                 _, loss = model(X, Y, speaker_embs=SE, speaker_emb_mask=None)
             losses.append(loss.item())
@@ -206,9 +208,7 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
         mode_params["ctx_window"],
         device,
     )
-    train_dataloader = itertools.cycle(
-        DataLoader(train_dataset, batch_size, shuffle=True)
-    )
+    train_dataloader = itertools.cycle(DataLoader(train_dataset, batch_size, shuffle=True))
     train_data = iter(train_dataloader)
     # we do not perform any explicit checks for dataset overlap & leave it to the user
     # to handle this
@@ -219,13 +219,7 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
     eval_train_data = DataLoader(train_dataset, batch_size, shuffle=True)
 
     batch = next(train_data)
-    X, Y, SE = get_training_tuple(
-        batch,
-        causal,
-        num_codebooks,
-        speaker_cond,
-        device
-    )
+    X, Y, SE = get_training_tuple(batch, causal, num_codebooks, speaker_cond, device)
 
     t0 = time.time()
     local_iter_num = 0  # number of iterations in the lifetime of this process
@@ -244,10 +238,28 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
     for param in model.parameters():
         param.requires_grad = False
     for param in itertools.chain(
-        model.transformer.ln_f.parameters(), model.transformer.h[last_n_blocks_to_finetune*-1:].parameters()
+        model.transformer.ln_f.parameters(), model.transformer.h[last_n_blocks_to_finetune * -1 :].parameters()
     ):
         param.requires_grad = True
     print(f"After freezing excl. last {last_n_blocks_to_finetune} transformer blocks: {trainable_count(model)=}...")
+
+    # log start of finetuning event
+    properties = {
+        **config,
+        **model_args,
+        "train": str(train),
+        "val": str(val),
+        "model_id": model_id,
+        "ckpt": ckpt,
+        "spk_emb_ckpt": spk_emb_ckpt,
+    }
+    finetune_jobid = hash_dictionary(properties)
+    posthog.capture(
+        TelemetryEvent(
+            name="user_started_finetuning",
+            properties={"finetune_jobid": finetune_jobid, **properties},
+        )
+    )
 
     while True:
         lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -278,7 +290,9 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
                 if losses["val"] < best_val_loss:
                     best_val_loss = losses["val"]
                     if iter_num > 0:
-                        ckpt_save_name = ckpt_save_name.replace(".pt", f"_bestval_{best_val_loss}".replace(".", "_") + ".pt")
+                        ckpt_save_name = ckpt_save_name.replace(
+                            ".pt", f"_bestval_{best_val_loss}".replace(".", "_") + ".pt"
+                        )
                         save_checkpoint = True
 
                 save_checkpoint = save_checkpoint or iter_num % save_interval == 0
@@ -352,7 +366,14 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
 
             # termination conditions
             if iter_num > max_iters:
-                break
+                # log end of finetuning event
+                posthog.capture(
+                    TelemetryEvent(
+                        name="user_completed_finetuning",
+                        properties={"finetune_jobid": finetune_jobid},
+                    )
+                )
+
 
 if __name__ == "__main__":
     main()
