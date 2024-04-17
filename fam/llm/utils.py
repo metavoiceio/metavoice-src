@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -87,3 +89,15 @@ def get_default_dtype() -> str:
 
 def get_device() -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def hash_dictionary(d: dict):
+    # Serialize the dictionary into JSON with sorted keys to ensure consistency
+    serialized = json.dumps(d, sort_keys=True)
+    # Encode the serialized string to bytes
+    encoded = serialized.encode()
+    # Create a hash object (you can also use sha1, sha512, etc.)
+    hash_object = hashlib.sha256(encoded)
+    # Get the hexadecimal digest of the hash
+    hash_digest = hash_object.hexdigest()
+    return hash_digest

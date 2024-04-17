@@ -402,8 +402,8 @@ def get_cached_file(file_or_uri: str):
         # hash the file path to get the cache name
         _cache_name = "audio_" + hashlib.md5(file_or_uri.encode("utf-8")).hexdigest() + ext
 
-        os.makedirs(os.path.expanduser("~/.cache/fam/"), exist_ok=True)
-        cache_path = os.path.expanduser(f"~/.cache/fam/{_cache_name}")
+        os.makedirs(os.path.expanduser("~/.cache/metavoice/"), exist_ok=True)
+        cache_path = os.path.expanduser(f"~/.cache/metavoice/{_cache_name}")
 
         if not os.path.exists(cache_path):
             command = f"curl -o {cache_path} {file_or_uri}"
