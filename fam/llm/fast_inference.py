@@ -182,6 +182,7 @@ class TTS:
                     "quantisation_mode": self._quantisation_mode,
                     "seed": self._seed,
                     "first_stage_ckpt": self._first_stage_ckpt,
+                    "gpu": torch.cuda.get_device_name(0),
                 },
             )
         )

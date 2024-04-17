@@ -370,7 +370,7 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
                 posthog.capture(
                     TelemetryEvent(
                         name="user_completed_finetuning",
-                        properties={"finetune_jobid": finetune_jobid},
+                        properties={"finetune_jobid": finetune_jobid, "loss": round(lossf, 4)},
                     )
                 )
 
