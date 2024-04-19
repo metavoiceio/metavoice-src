@@ -31,6 +31,10 @@ from fam.llm.utils import (
     get_device,
     normalize_text,
 )
+from fam.telemetry import TelemetryEvent
+from fam.telemetry.posthog import PosthogClient
+
+posthog = PosthogClient()  # see fam/telemetry/README.md for more information
 
 
 class TTS:
@@ -43,6 +47,7 @@ class TTS:
         seed: int = 1337,
         output_dir: str = "outputs",
         quantisation_mode: Optional[Literal["int4", "int8"]] = None,
+        first_stage_path: Optional[str] = None,
     ):
         """
         Initialise the TTS model.
@@ -56,6 +61,7 @@ class TTS:
                 - None for no quantisation (bf16 or fp16 based on device),
                 - int4 for int4 weight-only quantisation,
                 - int8 for int8 weight-only quantisation.
+            first_stage_path: path to first-stage LLM checkpoint. If provided, this will override the one grabbed from Hugging Face via `model_name`.
         """
 
         # NOTE: this needs to come first so that we don't change global state when we want to use
@@ -66,6 +72,9 @@ class TTS:
         self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=self.END_OF_AUDIO_TOKEN)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        if first_stage_path:
+            print(f"Overriding first stage checkpoint via provided model: {first_stage_path}")
+        self._first_stage_ckpt = first_stage_path or f"{self._model_dir}/first_stage.pt"
 
         second_stage_ckpt_path = f"{self._model_dir}/second_stage.pt"
         config_second_stage = InferenceConfig(
@@ -87,13 +96,16 @@ class TTS:
         self.precision = {"float16": torch.float16, "bfloat16": torch.bfloat16}[self._dtype]
         self.model, self.tokenizer, self.smodel, self.model_size = build_model(
             precision=self.precision,
-            checkpoint_path=Path(f"{self._model_dir}/first_stage.pt"),
+            checkpoint_path=Path(self._first_stage_ckpt),
             spk_emb_ckpt_path=Path(f"{self._model_dir}/speaker_encoder.pt"),
             device=self._device,
             compile=True,
             compile_prefill=True,
             quantisation_mode=quantisation_mode,
         )
+        self._seed = seed
+        self._quantisation_mode = quantisation_mode
+        self._model_name = model_name
 
     def synthesise(self, text: str, spk_ref_path: str, top_p=0.95, guidance_scale=3.0, temperature=1.0) -> str:
         """
@@ -153,8 +165,29 @@ class TTS:
         time_to_synth_s = time.time() - start
         audio, sr = librosa.load(str(wav_file) + ".wav")
         duration_s = librosa.get_duration(y=audio, sr=sr)
+        real_time_factor = time_to_synth_s / duration_s
         print(f"\nTotal time to synth (s): {time_to_synth_s}")
-        print(f"Real-time factor: {time_to_synth_s / duration_s:.2f}")
+        print(f"Real-time factor: {real_time_factor:.2f}")
+
+        posthog.capture(
+            TelemetryEvent(
+                name="user_ran_tts",
+                properties={
+                    "text": text,
+                    "temperature": temperature,
+                    "guidance_scale": guidance_scale,
+                    "top_p": top_p,
+                    "spk_ref_path": spk_ref_path,
+                    "speech_duration_s": duration_s,
+                    "time_to_synth_s": time_to_synth_s,
+                    "real_time_factor": round(real_time_factor, 2),
+                    "quantisation_mode": self._quantisation_mode,
+                    "seed": self._seed,
+                    "first_stage_ckpt": self._first_stage_ckpt,
+                    "gpu": torch.cuda.get_device_name(0),
+                },
+            )
+        )
 
         # save metadata
         json.dump(

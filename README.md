@@ -6,7 +6,7 @@
 <a target="_blank" style="display: inline-block; vertical-align: middle" href="https://colab.research.google.com/github/metavoiceio/metavoice-src/blob/main/colab_demo.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
-[![](https://dcbadge.vercel.app/api/server/Cpy6U3na8Z?style=flat&compact=True)](https://discord.gg/tbTbkGEgJM) 
+[![](https://dcbadge.vercel.app/api/server/Cpy6U3na8Z?style=flat&compact=True)](https://discord.gg/tbTbkGEgJM)
 [![Twitter](https://img.shields.io/twitter/url/https/twitter.com/OnusFM.svg?style=social&label=@metavoiceio)](https://twitter.com/metavoiceio)
 
 
@@ -52,19 +52,42 @@ rm -rf ffmpeg-git-*
 
 # install rust if not installed (ensure you've restarted your terminal after installation)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Project dependencies installation
+1. [Using poetry](#using-poetry-recommended)
+2. [Using pip/conda](#using-pipconda)
+
+#### Using poetry (recommended)
+```bash
 # install poetry if not installed (ensure you've restarted your terminal after installation)
 pipx install poetry
+
+# disable any conda envs that might interfere with poetry's venv
+conda deactivate
 
 # if running from Linux, keyring backend can hang on `poetry install`. This prevents that.
 export PYTHON_KEYRING_BACKEND=keyring.backends.fail.Keyring
 
+# pip's dependency resolver will complain, this is temporary expected behaviour
+# full inference & finetuning functionality will still be available
 poetry install && poetry run pip install torch==2.2.1 torchaudio==2.2.1
+```
+
+#### Using pip/conda
+NOTE 1: When raising issues, we'll ask you to try with poetry first.
+NOTE 2: All commands in this README use `poetry` by default, so you can just remove any `poetry run`.
+
+```bash
+pip install -r requirements.txt
+pip install torch==2.2.1 torchaudio==2.2.1
+pip install -e .
 ```
 
 ## Usage
 1. Download it and use it anywhere (including locally) with our [reference implementation](/fam/llm/fast_inference.py)
 ```bash
-# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference.  This will degrade the quality of the audio. 
+# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference.  This will degrade the quality of the audio.
 # Note: int8 is slower than bf16/fp16 for undebugged reasons. If you want fast, try int4 which is roughly 2x faster than bf16/fp16.
 poetry run python -i fam/llm/fast_inference.py
 
@@ -77,7 +100,7 @@ tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-s
 
 2. Deploy it on any cloud (AWS/GCP/Azure), using our [inference server](serving.py) or [web UI](app.py)
 ```bash
-# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. This will degrade the quality of the audio. 
+# You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. This will degrade the quality of the audio.
 # Note: int8 is slower than bf16/fp16 for undebugged reasons. If you want fast, try int4 which is roughly 2x faster than bf16/fp16.
 poetry run python serving.py
 poetry run python app.py
@@ -101,6 +124,11 @@ Note that we don't perform any dataset overlap checks, so ensure that your train
 Try it out using our sample datasets via:
 ```bash
 poetry run finetune --train ./datasets/sample_dataset.csv --val ./datasets/sample_val_dataset.csv
+```
+
+Once you've trained your model, you can use it for inference via:
+```bash
+poetry run python -i fam/llm/fast_inference.py --first_stage_path ./my-finetuned_model.pt
 ```
 
 ### Configuration
