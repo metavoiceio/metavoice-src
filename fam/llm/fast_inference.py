@@ -153,7 +153,6 @@ class TTS:
         with tempfile.NamedTemporaryFile(suffix=".wav") as enhanced_tmp:
             self.enhancer(str(wav_file) + ".wav", enhanced_tmp.name)
             shutil.copy2(enhanced_tmp.name, str(wav_file) + ".wav")
-            print(f"\nSaved audio to {wav_file}.wav")
 
         # calculating real-time factor (RTF)
         time_to_synth_s = time.time() - start

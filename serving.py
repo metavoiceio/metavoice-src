@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import shlex
@@ -95,7 +96,10 @@ async def text_to_speech(req: Request):
             )
 
         with open(wav_out_path, "rb") as f:
-            return Response(content=f.read(), media_type="audio/wav")
+            res = Response(content=f.read(), media_type="audio/wav")
+        
+        os.remove(wav_out_path)
+        return res
     except Exception as e:
         # traceback_str = "".join(traceback.format_tb(e.__traceback__))
         logger.exception(f"Error processing request {payload}")
