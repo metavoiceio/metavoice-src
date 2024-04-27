@@ -2,7 +2,6 @@ name: Sync Fork
 
 on:
   schedule:
-    # This schedule runs twice daily. You can adjust the cron syntax as needed.
     - cron:  '0 */12 * * *'
   workflow_dispatch:
 
