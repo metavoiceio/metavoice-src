@@ -20,11 +20,6 @@ from fam.llm.model import GPT, GPTConfig
 from fam.llm.preprocessing.audio_token_mode import get_params_for_mode
 from fam.llm.preprocessing.data_pipeline import get_training_tuple
 from fam.llm.utils import hash_dictionary
-from fam.telemetry import TelemetryEvent
-from fam.telemetry.posthog import PosthogClient
-
-# see fam/telemetry/README.md for more information
-posthog = PosthogClient()
 
 dtype: Literal["bfloat16", "float16", "tfloat32", "float32"] = (
     "bfloat16" if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else "float16"
@@ -254,12 +249,6 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
         "spk_emb_ckpt": spk_emb_ckpt,
     }
     finetune_jobid = hash_dictionary(properties)
-    posthog.capture(
-        TelemetryEvent(
-            name="user_started_finetuning",
-            properties={"finetune_jobid": finetune_jobid, **properties},
-        )
-    )
 
     while True:
         lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -363,16 +352,6 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
 
             iter_num += 1
             local_iter_num += 1
-
-            # termination conditions
-            if iter_num > max_iters:
-                # log end of finetuning event
-                posthog.capture(
-                    TelemetryEvent(
-                        name="user_completed_finetuning",
-                        properties={"finetune_jobid": finetune_jobid, "loss": round(lossf, 4)},
-                    )
-                )
 
 
 if __name__ == "__main__":

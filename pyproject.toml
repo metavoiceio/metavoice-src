@@ -24,7 +24,6 @@ gradio = "^4.20.1"
 huggingface_hub = "^0.21.4"
 click = "^8.1.7"
 wandb = { version = "^0.16.4", optional = true }
-posthog = "^3.5.0"
 python-dotenv = "^1.0.1"
 
 [tool.poetry.dev-dependencies]

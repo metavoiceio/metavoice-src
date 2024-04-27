@@ -29,10 +29,6 @@ from fam.llm.utils import (
     get_device,
     normalize_text,
 )
-from fam.telemetry import TelemetryEvent
-from fam.telemetry.posthog import PosthogClient
-
-posthog = PosthogClient()  # see fam/telemetry/README.md for more information
 
 
 class TTS:
@@ -166,26 +162,6 @@ class TTS:
         real_time_factor = time_to_synth_s / duration_s
         print(f"\nTotal time to synth (s): {time_to_synth_s}")
         print(f"Real-time factor: {real_time_factor:.2f}")
-
-        posthog.capture(
-            TelemetryEvent(
-                name="user_ran_tts",
-                properties={
-                    "text": text,
-                    "temperature": temperature,
-                    "guidance_scale": guidance_scale,
-                    "top_p": top_p,
-                    "spk_ref_path": spk_ref_path,
-                    "speech_duration_s": duration_s,
-                    "time_to_synth_s": time_to_synth_s,
-                    "real_time_factor": round(real_time_factor, 2),
-                    "quantisation_mode": self._quantisation_mode,
-                    "seed": self._seed,
-                    "first_stage_ckpt": self._first_stage_ckpt,
-                    "gpu": torch.cuda.get_device_name(0),
-                },
-            )
-        )
 
         return str(wav_file) + ".wav"
 

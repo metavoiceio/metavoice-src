@@ -31,7 +31,6 @@ x-common-settings: &common-settings
   environment:
     - NVIDIA_VISIBLE_DEVICES=all
     - HF_HOME=/.hf-cache
-    - ANONYMIZED_TELEMETRY=False
   logging:
     options:
       max-size: "100m"
