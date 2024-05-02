@@ -129,7 +129,11 @@ if __name__ == "__main__":
     logging.root.setLevel(logging.INFO)
 
     GlobalState.config = tyro.cli(ServingConfig)
-    GlobalState.tts = TTS(seed=GlobalState.config.seed, quantisation_mode=GlobalState.config.quantisation_mode)
+    GlobalState.tts = TTS(
+        seed=GlobalState.config.seed,
+        quantisation_mode=GlobalState.config.quantisation_mode,
+        telemetry_origin="api_server",
+    )
 
     app.add_middleware(
         fastapi.middleware.cors.CORSMiddleware,

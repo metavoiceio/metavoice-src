@@ -46,6 +46,7 @@ class TTS:
         output_dir: str = "outputs",
         quantisation_mode: Optional[Literal["int4", "int8"]] = None,
         first_stage_path: Optional[str] = None,
+        telemetry_origin: Optional[str] = None,
     ):
         """
         Initialise the TTS model.
@@ -60,6 +61,7 @@ class TTS:
                 - int4 for int4 weight-only quantisation,
                 - int8 for int8 weight-only quantisation.
             first_stage_path: path to first-stage LLM checkpoint. If provided, this will override the one grabbed from Hugging Face via `model_name`.
+            telemetry_origin: A string identifier that specifies the origin of the telemetry data sent to PostHog.
         """
 
         # NOTE: this needs to come first so that we don't change global state when we want to use
@@ -104,6 +106,7 @@ class TTS:
         self._seed = seed
         self._quantisation_mode = quantisation_mode
         self._model_name = model_name
+        self._telemetry_origin = telemetry_origin
 
     def synthesise(self, text: str, spk_ref_path: str, top_p=0.95, guidance_scale=3.0, temperature=1.0) -> str:
         """
@@ -183,6 +186,7 @@ class TTS:
                     "seed": self._seed,
                     "first_stage_ckpt": self._first_stage_ckpt,
                     "gpu": torch.cuda.get_device_name(0),
+                    "telemetry_origin": self._telemetry_origin,
                 },
             )
         )
