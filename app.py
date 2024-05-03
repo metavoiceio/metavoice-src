@@ -13,14 +13,14 @@ from fam.llm.fast_inference import TTS
 from fam.llm.utils import check_audio_file
 
 #### setup model
-TTS_MODEL = tyro.cli(TTS)
+TTS_MODEL = tyro.cli(TTS, args=["--telemetry_origin", "webapp"])
 
 #### setup interface
 RADIO_CHOICES = ["Preset voices", "Upload target voice (atleast 30s)"]
 MAX_CHARS = 220
 PRESET_VOICES = {
     # female
-    "Bria": "https://cdn.themetavoice.xyz/speakers%2Fbria.mp3",
+    "Bria": "https://cdn.themetavoice.xyz/speakers/bria.mp3",
     # male
     "Alex": "https://cdn.themetavoice.xyz/speakers/alex.mp3",
     "Jacob": "https://cdn.themetavoice.xyz/speakers/jacob.wav",
