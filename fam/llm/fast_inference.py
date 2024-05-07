@@ -174,6 +174,7 @@ class TTS:
             TelemetryEvent(
                 name="user_ran_tts",
                 properties={
+                    "model_name": self._model_name,
                     "text": text,
                     "temperature": temperature,
                     "guidance_scale": guidance_scale,
