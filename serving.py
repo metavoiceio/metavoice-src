@@ -1,4 +1,3 @@
-import json
 import logging
 import shlex
 import subprocess
@@ -12,7 +11,7 @@ import fastapi.middleware.cors
 import tyro
 import uvicorn
 from attr import dataclass
-from fastapi import Request
+from fastapi import File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
 
 from fam.llm.fast_inference import TTS
@@ -50,55 +49,55 @@ class _GlobalState:
 GlobalState = _GlobalState()
 
 
-@dataclass(frozen=True)
-class TTSRequest:
-    text: str
-    speaker_ref_path: Optional[str] = None
-    guidance: float = 3.0
-    top_p: float = 0.95
-    top_k: Optional[int] = None
-
-
 @app.get("/health")
 async def health_check():
     return {"status": "ok"}
 
 
 @app.post("/tts", response_class=Response)
-async def text_to_speech(req: Request):
-    audiodata = await req.body()
-    payload = None
+async def text_to_speech(
+    text: str = Form(...),
+    speaker_ref_path: Optional[str] = Form(None),
+    guidance: float = Form(3.0),
+    top_p: float = Form(0.95),
+    audiodata: Optional[UploadFile] = File(None),
+):
+    # Ensure at least one of speaker_ref_path or audiodata is provided
+    if not audiodata and not speaker_ref_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either an audio file or a speaker reference path must be provided.",
+        )
+
     wav_out_path = None
 
     try:
-        headers = req.headers
-        payload = headers["X-Payload"]
-        payload = json.loads(payload)
-        tts_req = TTSRequest(**payload)
         with tempfile.NamedTemporaryFile(suffix=".wav") as wav_tmp:
-            if tts_req.speaker_ref_path is None:
+            if speaker_ref_path is None:
                 wav_path = _convert_audiodata_to_wav_path(audiodata, wav_tmp)
                 check_audio_file(wav_path)
             else:
                 # TODO: fix
-                wav_path = tts_req.speaker_ref_path
+                wav_path = speaker_ref_path
 
             if wav_path is None:
                 warnings.warn("Running without speaker reference")
-                assert tts_req.guidance is None
+                assert guidance is None
 
             wav_out_path = GlobalState.tts.synthesise(
-                text=tts_req.text,
+                text=text,
                 spk_ref_path=wav_path,
-                top_p=tts_req.top_p,
-                guidance_scale=tts_req.guidance,
+                top_p=top_p,
+                guidance_scale=guidance,
             )
 
         with open(wav_out_path, "rb") as f:
             return Response(content=f.read(), media_type="audio/wav")
     except Exception as e:
         # traceback_str = "".join(traceback.format_tb(e.__traceback__))
-        logger.exception(f"Error processing request {payload}")
+        logger.exception(
+            f"Error processing request. text: {text}, speaker_ref_path: {speaker_ref_path}, guidance: {guidance}, top_p: {top_p}"
+        )
         return Response(
             content="Something went wrong. Please try again in a few mins or contact us on Discord",
             status_code=500,
@@ -108,9 +107,9 @@ async def text_to_speech(req: Request):
             Path(wav_out_path).unlink(missing_ok=True)
 
 
-def _convert_audiodata_to_wav_path(audiodata, wav_tmp):
+def _convert_audiodata_to_wav_path(audiodata: UploadFile, wav_tmp):
     with tempfile.NamedTemporaryFile() as unknown_format_tmp:
-        if unknown_format_tmp.write(audiodata) == 0:
+        if unknown_format_tmp.write(audiodata.read()) == 0:
             return None
         unknown_format_tmp.flush()
 
@@ -129,7 +128,11 @@ if __name__ == "__main__":
     logging.root.setLevel(logging.INFO)
 
     GlobalState.config = tyro.cli(ServingConfig)
-    GlobalState.tts = TTS(seed=GlobalState.config.seed, quantisation_mode=GlobalState.config.quantisation_mode)
+    GlobalState.tts = TTS(
+        seed=GlobalState.config.seed,
+        quantisation_mode=GlobalState.config.quantisation_mode,
+        telemetry_origin="api_server",
+    )
 
     app.add_middleware(
         fastapi.middleware.cors.CORSMiddleware,

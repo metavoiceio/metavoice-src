@@ -30,6 +30,7 @@ docker-compose up -d ui && docker-compose ps && docker-compose logs -f
 
 Server
 ```bash
+# navigate to <URL>/docs for API definitions
 docker-compose up -d server && docker-compose ps && docker-compose logs -f
 ```
 
@@ -102,7 +103,10 @@ tts.synthesise(text="This is a demo of text to speech by MetaVoice-1B, an open-s
 ```bash
 # You can use `--quantisation_mode int4` or `--quantisation_mode int8` for experimental faster inference. This will degrade the quality of the audio.
 # Note: int8 is slower than bf16/fp16 for undebugged reasons. If you want fast, try int4 which is roughly 2x faster than bf16/fp16.
+
+# navigate to <URL>/docs for API definitions
 poetry run python serving.py
+
 poetry run python app.py
 ```
 
