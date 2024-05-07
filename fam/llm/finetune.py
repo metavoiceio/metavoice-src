@@ -373,6 +373,7 @@ def main(train: Path, val: Path, model_id: str, ckpt: Optional[Path], spk_emb_ck
                         properties={"finetune_jobid": finetune_jobid, "loss": round(lossf, 4)},
                     )
                 )
+                break
 
 
 if __name__ == "__main__":
