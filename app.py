@@ -27,7 +27,6 @@ PRESET_VOICES = {
 }
 
 
-
 def denormalise_top_p(top_p):
     # returns top_p in the range [0.9, 1.0]
     return round(0.9 + top_p / 100, 2)

@@ -1,6 +1,4 @@
-import json
 import os
-import pathlib
 import shutil
 import tempfile
 import time
@@ -192,19 +190,6 @@ class TTS:
                     "telemetry_origin": self._telemetry_origin,
                 },
             )
-        )
-
-        # save metadata
-        json.dump(
-            {
-                "speaker": spk_ref_path,
-                "text": text,
-                "top_p": top_p,
-                "guidance_scale": guidance_scale,
-                "temperature": temperature,
-                "output": str(wav_file) + ".wav",
-            },
-            pathlib.Path(str(wav_file) + ".json").open("w"),
         )
 
         return str(wav_file) + ".wav"
