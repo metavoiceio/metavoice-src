@@ -1,3 +1,5 @@
+# curl -X POST http://127.0.0.1:58003/tts -F "text=Testing this inference server." -F "speaker_ref_path=https://cdn.themetavoice.xyz/speakers/bria.mp3" -F "guidance=3.0" -F "top_p=0.95" --output out.wav
+
 import logging
 import shlex
 import subprocess
@@ -56,11 +58,11 @@ async def health_check():
 
 @app.post("/tts", response_class=Response)
 async def text_to_speech(
-    text: str = Form(...),
-    speaker_ref_path: Optional[str] = Form(None),
-    guidance: float = Form(3.0),
-    top_p: float = Form(0.95),
-    audiodata: Optional[UploadFile] = File(None),
+    text: str = Form(..., description="Text to convert to speech."),
+    speaker_ref_path: Optional[str] = Form(None, description="Optional URL to an audio file of a reference speaker. Provide either this URL or audio data through 'audiodata'."),
+    audiodata: Optional[UploadFile] = File(None, description="Optional audio data of a reference speaker. Provide either this file or a URL through 'speaker_ref_path'."),
+    guidance: float = Form(3.0, description="Control speaker similarity - how closely to match speaker identity and speech style, range: 0.0 to 5.0.", ge=0.0, le=5.0),
+    top_p: float = Form(0.95, description="Controls speech stability - improves text following for a challenging speaker, range: 0.0 to 1.0.", ge=0.0, le=1.0),
 ):
     # Ensure at least one of speaker_ref_path or audiodata is provided
     if not audiodata and not speaker_ref_path:

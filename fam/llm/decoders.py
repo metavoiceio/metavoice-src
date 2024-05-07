@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 import pathlib
 import uuid
@@ -90,12 +91,12 @@ class EncodecDecoder(Decoder):
             raise Exception("wav predicted is shorter than 400ms!")
 
         try:
-            wav_file_name = self.output_dir / f"synth_{text.replace(' ', '_')[:25]}_{uuid.uuid4()}"
+            wav_file_name = self.output_dir / f"synth_{datetime.now().strftime('%y-%m-%d--%H-%M-%S')}_{text.replace(' ', '_')[:25]}_{uuid.uuid4()}"
             self._save_audio(wav_file_name, wav)
             return wav_file_name
         except Exception as e:
             print(f"Failed to save audio! Reason: {e}")
 
-            wav_file_name = self.output_dir / f"synth_{uuid.uuid4()}"
+            wav_file_name = self.output_dir / f"synth_{datetime.now().strftime('%y-%m-%d--%H-%M-%S')}_{uuid.uuid4()}"
             self._save_audio(wav_file_name, wav)
             return wav_file_name
