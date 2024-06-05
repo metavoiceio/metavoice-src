@@ -110,7 +110,7 @@ def sample(
     temperature: torch.Tensor,
     top_p: Optional[torch.Tensor] = None,
     top_k: Optional[torch.Tensor] = None,
-):
+) -> Tuple[torch.Tensor, torch.Tensor]:
     # (b, t, vocab_size)
     logits = logits[:, -1]
     logits_cond, logits_uncond_spkemb = logits.split(logits.size(0) // 2, dim=0)
@@ -126,10 +126,10 @@ def prefill(
     spk_emb: torch.Tensor,
     input_pos: torch.Tensor,
     **sampling_kwargs,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     # input_pos: [B, S]
-    logits = model(x, spk_emb, input_pos)
-    return sample(logits, **sampling_kwargs)[0]
+    logits, output_emb = model(x, spk_emb, input_pos)
+    return sample(logits, **sampling_kwargs)[0], output_emb
 
 
 def decode_one_token(
@@ -138,11 +138,11 @@ def decode_one_token(
     spk_emb: torch.Tensor,
     input_pos: torch.Tensor,
     **sampling_kwargs,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # input_pos: [B, 1]
     assert input_pos.shape[-1] == 1
-    logits = model(x, spk_emb, input_pos)
-    return sample(logits, **sampling_kwargs)
+    logits, output_emb = model(x, spk_emb, input_pos)
+    return *sample(logits, **sampling_kwargs), output_emb
 
 
 def decode_n_tokens(
@@ -156,22 +156,25 @@ def decode_n_tokens(
     end_of_audio_token: int = 2048,
     **sampling_kwargs,
 ):
-    new_tokens, new_probs = [], []
+    new_tokens, new_probs, new_output_embs = [], [], []
     for i in tqdm.tqdm(range(num_new_tokens)):
         if (cur_token == end_of_audio_token).any():
             break
         with torch.backends.cuda.sdp_kernel(
             enable_flash=False, enable_mem_efficient=False, enable_math=True
         ):  # Actually better for Inductor to codegen attention here
-            next_token, next_prob = decode_one_token(model, cur_token, spk_emb, input_pos, **sampling_kwargs)
+            next_token, next_prob, new_output_emb = decode_one_token(
+                model, cur_token, spk_emb, input_pos, **sampling_kwargs
+            )
             input_pos += 1
             new_tokens.append(next_token.clone())
+            new_output_embs.append(new_output_emb.clone())
             callback(new_tokens[-1])
             if return_probs:
                 new_probs.append(next_prob.clone())
             cur_token = next_token.view(1, -1).repeat(2, 1)
 
-    return new_tokens, new_probs
+    return new_tokens, new_probs, new_output_embs
 
 
 def model_forward(model, x, spk_emb, input_pos):
@@ -208,12 +211,13 @@ def generate(
     seq = torch.clone(prompt)
     input_pos = torch.arange(0, T, device=device)
 
-    next_token = prefill(model, prompt.view(1, -1).repeat(2, 1), spk_emb, input_pos, **sampling_kwargs)
+    # next_token is (1) whereas output_emb should be (1, T, D) where T = prompt length
+    next_token, text_output_emb = prefill(model, prompt.view(1, -1).repeat(2, 1), spk_emb, input_pos, **sampling_kwargs)
     seq = torch.cat([seq, next_token.view(1)])
 
     input_pos = torch.tensor([T], device=device, dtype=torch.int)
 
-    generated_tokens, _ = decode_n_tokens(
+    generated_tokens, _, audio_output_embs = decode_n_tokens(
         model,
         next_token.view(1, -1).repeat(2, 1),
         spk_emb,
@@ -223,9 +227,13 @@ def generate(
         end_of_audio_token=end_of_audio_token,
         **sampling_kwargs,
     )
+    audio_output_embs = torch.cat(audio_output_embs, dim=1)
+    # TODO: return and propagate up the stack.
+    # torch.save(audio_output_embs, "audio_output_embs.pt")
+
     seq = torch.cat([seq, torch.cat(generated_tokens)])
 
-    return seq
+    return seq, audio_output_embs
 
 
 def encode_tokens(tokenizer: TrainedBPETokeniser, text: str, device="cuda") -> torch.Tensor:
@@ -372,7 +380,7 @@ def build_model(
 
     device_sync(device=device)  # MKG
     t0 = time.perf_counter()
-    y = generate(
+    _, _ = generate(
         model,
         encoded,
         spk_emb,
@@ -420,7 +428,7 @@ def main(
         callback = lambda x: x
     t0 = time.perf_counter()
 
-    y = generate(
+    y, output_embs = generate(
         model,
         encoded,
         spk_emb,
@@ -442,4 +450,4 @@ def main(
     # print(f"Average tokens/sec: {torch.mean(torch.tensor(aggregate_metrics['tokens_per_sec'])).item():.2f}")
     print(f"Memory used: {torch.cuda.max_memory_reserved() / 1e9:.02f} GB\n")
 
-    return y.tolist()
+    return y, output_embs
