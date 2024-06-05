@@ -64,10 +64,10 @@ def check_audio_file(path_or_uri, threshold_s=30):
 
     audio, sr = librosa.load(filepath)
     duration_s = librosa.get_duration(y=audio, sr=sr)
-    if duration_s < threshold_s:
-        raise Exception(
-            f"The audio file is too short. Please provide an audio file that is at least {threshold_s} seconds long to proceed."
-        )
+    # if duration_s < threshold_s:
+    #     raise Exception(
+    #         f"The audio file is too short. Please provide an audio file that is at least {threshold_s} seconds long to proceed."
+    #     )
 
     # Clean up the temporary file if it was created
     if "http" in path_or_uri:
@@ -76,6 +76,7 @@ def check_audio_file(path_or_uri, threshold_s=30):
 
 def get_default_dtype() -> str:
     """Compute default 'dtype' based on GPU architecture"""
+    return "bfloat16"
     if torch.cuda.is_available():
         for i in range(torch.cuda.device_count()):
             device_properties = torch.cuda.get_device_properties(i)

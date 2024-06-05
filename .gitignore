@@ -9,7 +9,6 @@
 *wandb
 *.parquet
 *.wav
-*.pt
 *.bin
 *.png
 *.DS_Store
@@ -22,7 +21,6 @@
 *.tar
 *.db
 *.dat
-*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
