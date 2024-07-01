@@ -4,7 +4,7 @@ import os
 import re
 import subprocess
 import tempfile
-
+import pathlib
 import librosa
 import torch
 
@@ -102,3 +102,49 @@ def hash_dictionary(d: dict):
     # Get the hexadecimal digest of the hash
     hash_digest = hash_object.hexdigest()
     return hash_digest
+
+
+def get_cached_embedding(local_file_path: str, spkemb_model):
+    if not os.path.exists(local_file_path):
+        raise FileNotFoundError(f"File {local_file_path} not found!")
+
+    # hash the file path to get the cache name
+    _cache_name = "embedding_" + hashlib.md5(local_file_path.encode("utf-8")).hexdigest() + ".pt"
+
+    os.makedirs(os.path.expanduser("~/.cache/fam/"), exist_ok=True)
+    cache_path = os.path.expanduser(f"~/.cache/fam/{_cache_name}")
+
+    if not os.path.exists(cache_path):
+        spk_emb = spkemb_model.embed_utterance_from_file(local_file_path, numpy=False).unsqueeze(0)  # (b=1, c)
+        torch.save(spk_emb, cache_path)
+    else:
+        spk_emb = torch.load(cache_path)
+
+    return spk_emb
+
+
+def get_cached_file(file_or_uri: str):
+    """
+    If it's an s3 file, download it to a local temporary file and return that path.
+    Otherwise return the path as is.
+    """
+    is_uri = file_or_uri.startswith("http")
+
+    cache_path = None
+    if is_uri:
+        ext = pathlib.Path(file_or_uri).suffix
+        # hash the file path to get the cache name
+        _cache_name = "audio_" + hashlib.md5(file_or_uri.encode("utf-8")).hexdigest() + ext
+
+        os.makedirs(os.path.expanduser("~/.cache/metavoice/"), exist_ok=True)
+        cache_path = os.path.expanduser(f"~/.cache/metavoice/{_cache_name}")
+
+        if not os.path.exists(cache_path):
+            command = f"curl -o {cache_path} {file_or_uri}"
+            subprocess.run(command, shell=True, check=True)
+    else:
+        if os.path.exists(file_or_uri):
+            cache_path = file_or_uri
+        else:
+            raise FileNotFoundError(f"File {file_or_uri} not found!")
+    return cache_path

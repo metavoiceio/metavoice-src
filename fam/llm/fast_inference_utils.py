@@ -154,12 +154,19 @@ def decode_n_tokens(
     callback=lambda _: _,
     return_probs: bool = False,
     end_of_audio_token: int = 2048,
+    yield_after_k_tokens: Optional[int] = None,
     **sampling_kwargs,
 ):
     new_tokens, new_probs, new_output_embs = [], [], []
-    for i in tqdm.tqdm(range(num_new_tokens)):
+    
+    for i in range(1, num_new_tokens + 1):
+        if yield_after_k_tokens and i % yield_after_k_tokens == 0:
+            yield new_tokens, new_probs, new_output_embs
+            new_tokens, new_probs, new_output_embs = [], [], []
+
         if (cur_token == end_of_audio_token).any():
             break
+
         with torch.backends.cuda.sdp_kernel(
             enable_flash=False, enable_mem_efficient=False, enable_math=True
         ):  # Actually better for Inductor to codegen attention here
@@ -174,7 +181,7 @@ def decode_n_tokens(
                 new_probs.append(next_prob.clone())
             cur_token = next_token.view(1, -1).repeat(2, 1)
 
-    return new_tokens, new_probs, new_output_embs
+    yield new_tokens, new_probs, new_output_embs
 
 
 def model_forward(model, x, spk_emb, input_pos):
@@ -190,18 +197,21 @@ def generate(
     max_new_tokens: Optional[int] = None,
     callback=lambda x: x,
     end_of_audio_token: int = 2048,
+    yield_after_k_tokens: Optional[int] = None,
     **sampling_kwargs,
-) -> torch.Tensor:
+):
     """
     Takes a conditioning sequence (prompt) as input and continues to generate as many tokens as requested.
     """
     # create an empty tensor of the expected final shape and fill in the current tokens
     T = prompt.size(0)
+
     if max_new_tokens is None:
         max_seq_length = model.config.block_size
     else:
         max_seq_length = T + max_new_tokens
         max_seq_length = min(max_seq_length, model.config.block_size)
+
     max_new_tokens = max_seq_length - T
     if max_new_tokens <= 0:
         raise ValueError("Prompt is too long to generate more tokens")
@@ -217,7 +227,7 @@ def generate(
 
     input_pos = torch.tensor([T], device=device, dtype=torch.int)
 
-    generated_tokens, _, audio_output_embs = decode_n_tokens(
+    for _, _, audio_output_embs in decode_n_tokens(
         model,
         next_token.view(1, -1).repeat(2, 1),
         spk_emb,
@@ -225,15 +235,11 @@ def generate(
         max_new_tokens - 1,
         callback=callback,
         end_of_audio_token=end_of_audio_token,
+        yield_after_k_tokens = yield_after_k_tokens,
         **sampling_kwargs,
-    )
-    audio_output_embs = torch.cat(audio_output_embs, dim=1)
-    # TODO: return and propagate up the stack.
-    # torch.save(audio_output_embs, "audio_output_embs.pt")
-
-    seq = torch.cat([seq, torch.cat(generated_tokens)])
-
-    return seq, audio_output_embs
+    ):
+        audio_output_embs = torch.cat(audio_output_embs, dim=1)
+        yield audio_output_embs
 
 
 def encode_tokens(tokenizer: TrainedBPETokeniser, text: str, device="cuda") -> torch.Tensor:
@@ -341,7 +347,7 @@ def build_model(
 ):
     assert checkpoint_path.is_file(), checkpoint_path
 
-    print(f"Using device={device}")
+    print(f"\n\n\nUsing device={device}")
 
     print("Loading model ...")
     t0 = time.time()
@@ -379,8 +385,9 @@ def build_model(
     spk_emb = torch.randn((1, 256), device=device, dtype=precision)
 
     device_sync(device=device)  # MKG
+    
     t0 = time.perf_counter()
-    _, _ = generate(
+    list(generate(
         model,
         encoded,
         spk_emb,
@@ -391,7 +398,7 @@ def build_model(
         top_p=torch.tensor(0.95, device=device, dtype=precision),
         guidance_scale=torch.tensor(3.0, device=device, dtype=precision),
         end_of_audio_token=9999,  # don't end early for compilation stage.
-    )
+    ))
 
     device_sync(device=device)  # MKG
 
