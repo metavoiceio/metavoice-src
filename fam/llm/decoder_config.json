@@ -1,0 +1,107 @@
+{
+    "data_path": "",
+    "val_data_path": "",
+    "wandb_run_name": "",
+    "_data_path": "",
+    "cat_encodec_first_two_hierarchies": false,
+    "use_second_stage": false,
+    "use_extra_preprocessing": false,
+    "input_upsampling_factor": 160,
+    "add_noise": false,
+    "_val_data_path": "",
+    "_wandb_run_name": "",
+    "val_num_dl_workers": 1,
+    "val_batch_size": 1,
+    "resblock": "1",
+    "num_gpus": 2,
+    "batch_size": 32,
+    "learning_rate": 0.00005,
+    "adam_b1": 0.8,
+    "adam_b2": 0.99,
+    "lr_decay": 0.999,
+    "use_speaker_embedding": false,
+    "seed": 1234,
+    "upsample_rates": [
+        10,
+        2,
+        2,
+        2,
+        2
+    ],
+    "upsample_kernel_sizes": [
+        20,
+        4,
+        4,
+        4,
+        4
+    ],
+    "upsample_initial_channel": 1536,
+    "resblock_kernel_sizes": [
+        3,
+        7,
+        11
+    ],
+    "resblock_dilation_sizes": [
+        [
+            1,
+            3,
+            5
+        ],
+        [
+            1,
+            3,
+            5
+        ],
+        [
+            1,
+            3,
+            5
+        ]
+    ],
+    "activation": "snakebeta",
+    "snake_logscale": true,
+    "resolutions": [
+        [
+            1024,
+            120,
+            600
+        ],
+        [
+            2048,
+            240,
+            1200
+        ],
+        [
+            512,
+            50,
+            240
+        ]
+    ],
+    "mpd_reshapes": [
+        2,
+        3,
+        5,
+        7,
+        11
+    ],
+    "use_spectral_norm": false,
+    "discriminator_channel_mult": 1,
+    "inital_channels": 2048,
+    "segment_size": 10240,
+    "_comment": "below specifies size of conv_pre, and is used inside commented out data loaders!",
+    "num_mels": 80,
+    "num_freq": 1025,
+    "n_fft": 1024,
+    "hop_size": 320,
+    "win_size": 1024,
+    "sampling_rate": 24000,
+    "fmin": 0,
+    "fmax": 12000,
+    "fmax_for_loss": null,
+    "num_dl_workers": 32,
+    "dist_config": {
+        "dist_backend": "nccl",
+        "dist_url": "tcp://localhost:54321",
+        "world_size": 2
+    }
+}

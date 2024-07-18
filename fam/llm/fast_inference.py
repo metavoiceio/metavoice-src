@@ -1,28 +1,20 @@
+import json
+import math
 import os
-import shutil
-import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Literal, Optional
 
 import librosa
+import scipy.io.wavfile  # type: ignore
 import torch
 import tyro
-from huggingface_hub import snapshot_download
+from huggingface_hub import snapshot_download  # type: ignore
 
-from fam.llm.adapters import FlattenedInterleavedEncodec2Codebook
-from fam.llm.decoders import EncodecDecoder
 from fam.llm.fast_inference_utils import build_model, main
-from fam.llm.inference import (
-    EncodecDecoder,
-    InferenceConfig,
-    Model,
-    TiltedEncodec,
-    TrainedBPETokeniser,
-    get_cached_embedding,
-    get_cached_file,
-    get_enhancer,
-)
+from fam.llm.inference import get_cached_embedding, get_cached_file
+from fam.llm.model_decoder import EmbeddingDecoder
 from fam.llm.utils import (
     check_audio_file,
     get_default_dtype,
@@ -35,12 +27,20 @@ from fam.telemetry.posthog import PosthogClient
 posthog = PosthogClient()  # see fam/telemetry/README.md for more information
 
 
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
 class TTS:
     END_OF_AUDIO_TOKEN = 1024
 
     def __init__(
         self,
         model_name: str = "metavoiceio/metavoice-1B-v0.1",
+        decoder_config_path: str = f"{os.path.dirname(os.path.abspath(__file__))}/decoder_config.json",
+        decoder_checkpoint_file: str = f"{os.path.dirname(os.path.abspath(__file__))}/decoder.pt",
         *,
         seed: int = 1337,
         output_dir: str = "outputs",
@@ -69,29 +69,25 @@ class TTS:
         self._dtype = get_default_dtype()
         self._device = get_device()
         self._model_dir = snapshot_download(repo_id=model_name)
-        self.first_stage_adapter = FlattenedInterleavedEncodec2Codebook(end_of_audio_token=self.END_OF_AUDIO_TOKEN)
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         if first_stage_path:
             print(f"Overriding first stage checkpoint via provided model: {first_stage_path}")
         self._first_stage_ckpt = first_stage_path or f"{self._model_dir}/first_stage.pt"
 
-        second_stage_ckpt_path = f"{self._model_dir}/second_stage.pt"
-        config_second_stage = InferenceConfig(
-            ckpt_path=second_stage_ckpt_path,
-            num_samples=1,
-            seed=seed,
-            device=self._device,
-            dtype=self._dtype,
-            compile=False,
-            init_from="resume",
-            output_dir=self.output_dir,
-        )
-        data_adapter_second_stage = TiltedEncodec(end_of_audio_token=self.END_OF_AUDIO_TOKEN)
-        self.llm_second_stage = Model(
-            config_second_stage, TrainedBPETokeniser, EncodecDecoder, data_adapter_fn=data_adapter_second_stage.decode
-        )
-        self.enhancer = get_enhancer("df")
+        if not os.path.exists(decoder_config_path):
+            raise ValueError(f"EmbeddingDecoder config file not found at {decoder_config_path}")
+
+        if not os.path.exists(decoder_checkpoint_file):
+            raise ValueError(f"EmbeddingDecoder checkpoint file not found at {decoder_checkpoint_file}")
+
+        with open(decoder_config_path) as f:
+            self.decoder_config = AttrDict(json.loads(f.read()))
+        self.decoder = EmbeddingDecoder(self.decoder_config).to(self._device)
+        state_dict_g = torch.load(decoder_checkpoint_file, map_location=self._device)
+        self.decoder.load_state_dict(state_dict_g["generator"])
+        self.decoder.eval()
+        self.decoder.remove_weight_norm()
 
         self.precision = {"float16": torch.float16, "bfloat16": torch.bfloat16}[self._dtype]
         self.model, self.tokenizer, self.smodel, self.model_size = build_model(
@@ -108,7 +104,7 @@ class TTS:
         self._model_name = model_name
         self._telemetry_origin = telemetry_origin
 
-    def synthesise(self, text: str, spk_ref_path: str, top_p=0.95, guidance_scale=3.0, temperature=1.0) -> str:
+    def synthesise(self, text: str, spk_ref_path: str, top_p=0.95, guidance_scale=2.0, temperature=1.0) -> str:
         """
         text: Text to speak
         spk_ref_path: Path to speaker reference file. Min. 30s of audio required. Supports both local paths & public URIs. Audio formats: wav, flac & mp3
@@ -128,7 +124,7 @@ class TTS:
 
         start = time.time()
         # first stage LLM
-        tokens = main(
+        _, output_embs = main(
             model=self.model,
             tokenizer=self.tokenizer,
             model_size=self.model_size,
@@ -138,33 +134,46 @@ class TTS:
             guidance_scale=torch.tensor(guidance_scale, device=self._device, dtype=self.precision),
             temperature=torch.tensor(temperature, device=self._device, dtype=self.precision),
         )
-        _, extracted_audio_ids = self.first_stage_adapter.decode([tokens])
+        # TODO: run EmbeddingDecoder, and save and print output wav_file path?
+        output_embs = output_embs.to(dtype=torch.float32).transpose(1, 2)  # (b, c, t)
 
-        b_speaker_embs = spk_emb.unsqueeze(0)
+        model_upsample_factor = math.prod(self.decoder_config.upsample_rates)  # type: ignore
+        if self.decoder_config.input_upsampling_factor != model_upsample_factor:  # type: ignore
+            output_embs = torch.nn.functional.interpolate(
+                output_embs,
+                scale_factor=[
+                    self.decoder_config.input_upsampling_factor / model_upsample_factor  # type: ignore
+                ],  # [320/256] or [160 / 128],
+                mode="linear",
+            )
 
-        # second stage LLM + multi-band diffusion model
-        wav_files = self.llm_second_stage(
-            texts=[text],
-            encodec_tokens=[torch.tensor(extracted_audio_ids, dtype=torch.int32, device=self._device).unsqueeze(0)],
-            speaker_embs=b_speaker_embs,
-            batch_size=1,
-            guidance_scale=None,
-            top_p=None,
-            top_k=200,
-            temperature=1.0,
-            max_new_tokens=None,
-        )
+        if self.decoder_config.add_noise:  # type: ignore
+            output_embs = torch.cat(
+                [
+                    output_embs,
+                    torch.randn(
+                        # add model_upsample_factor worth of noise to each input!
+                        (output_embs.shape[0], model_upsample_factor, output_embs.shape[-1]),
+                        device=output_embs.device,
+                        dtype=output_embs.dtype,
+                    ),
+                ],
+                dim=1,
+            )
 
-        # enhance using deepfilternet
-        wav_file = wav_files[0]
-        with tempfile.NamedTemporaryFile(suffix=".wav") as enhanced_tmp:
-            self.enhancer(str(wav_file) + ".wav", enhanced_tmp.name)
-            shutil.copy2(enhanced_tmp.name, str(wav_file) + ".wav")
-            print(f"\nSaved audio to {wav_file}.wav")
+        with torch.no_grad():
+            y_g_hat = self.decoder(output_embs)
+            audio = y_g_hat.squeeze()
+            audio = audio * 32768.0
+            audio = audio.cpu().numpy().astype("int16")
+
+        wav_file_name = str(Path(self.output_dir) / f"synth_{uuid.uuid4()}.wav")
+        scipy.io.wavfile.write(wav_file_name, 24000, audio)
+        print(f"\nSaved audio to {wav_file_name}.wav")
 
         # calculating real-time factor (RTF)
         time_to_synth_s = time.time() - start
-        audio, sr = librosa.load(str(wav_file) + ".wav")
+        audio, sr = librosa.load(str(wav_file_name))
         duration_s = librosa.get_duration(y=audio, sr=sr)
         real_time_factor = time_to_synth_s / duration_s
         print(f"\nTotal time to synth (s): {time_to_synth_s}")
@@ -192,7 +201,7 @@ class TTS:
             )
         )
 
-        return str(wav_file) + ".wav"
+        return str(wav_file_name)
 
 
 if __name__ == "__main__":
