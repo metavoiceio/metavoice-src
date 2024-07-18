@@ -18,7 +18,7 @@ class PosthogClient(TelemetryClient):
             project_api_key="phc_tk7IUlV7Q7lEa9LNbXxyC1sMWlCqiW6DkHyhJrbWMCS", host="https://eu.posthog.com"
         )
 
-        if not os.getenv("ANONYMIZED_TELEMETRY", True) or "pytest" in sys.modules:
+        if not bool(os.getenv("ANONYMIZED_TELEMETRY", True)) or "pytest" in sys.modules:
             self._posthog.disabled = True
             logger.info("Anonymized telemetry disabled. See fam/telemetry/README.md for more information.")
         else:
