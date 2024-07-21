@@ -1,6 +1,5 @@
 import queue
 from fastapi import FastAPI, WebSocket
-import asyncio
 import random
 from starlette.websockets import WebSocketDisconnect
 import traceback
@@ -29,12 +28,17 @@ def flush_queue(kqueue):
 
 @app.websocket("/audio")
 async def audio_stream(websocket: WebSocket):
-    # text = random.choice(texts)
 
+    def flush():
+        flush_queue(model.text_queue)
+        flush_queue(model.embeddings_queue)
+        flush_queue(model.audio_out_queue)
+
+    start = time.perf_counter()
     await websocket.accept()
-    print("connection made with client, streaming...")    
-
-    flush_queue(model.audio_out_queue)
+    flush()
+    print(f"connection made with client: {time.perf_counter() - start}s, streaming...")    
+    
     try:
         while True:
             text = await websocket.receive_text()
@@ -42,7 +46,6 @@ async def audio_stream(websocket: WebSocket):
                     
             if text == "<client_end>":
                 await websocket.send_text("<server_end>")
-                flush_queue(model.audio_out_queue)
                 print("\n\n")
                 continue
 
@@ -53,19 +56,16 @@ async def audio_stream(websocket: WebSocket):
                 guidance_scale=3.0,
             )
 
+            t0 = time.perf_counter()
             while True:
                 try:
-                    # t0 = time.perf_counter()
-                    audio = model.audio_out_queue.get(timeout=2)
+                    audio = model.audio_out_queue.get(timeout=0.5)
                     await websocket.send_bytes(audio.tobytes())
-                    # print(f"got in: {time.perf_counter() - t0}")
-                
                 except queue.Empty:
-                    print("finished speaking this utterance")
+                    print(f"finished speaking this utterance in: {time.perf_counter() - t0}")
                     break
     
     except WebSocketDisconnect as e:
-        traceback.print_exc()
         print(f"WebSocket disconnected: {e.code}, {e.reason}")
     except Exception as e:
         traceback.print_exc()
