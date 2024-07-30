@@ -1,3 +1,4 @@
+import signal
 import queue
 from fastapi import FastAPI, WebSocket
 import random
@@ -5,7 +6,8 @@ from starlette.websockets import WebSocketDisconnect
 import traceback
 import torch
 import time
-from fam.llm.fast_inference import TTS
+import os
+from fam.llm.fast_inference import TTS, flush_queue
 
 app = FastAPI()
 model = None
@@ -14,16 +16,8 @@ texts = [
     "Experience the power of MetaVoice-1B, an open-source audio model for text to speech conversion.",
     "MetaVoice-1B, a cutting-edge open-source audio model, brings text to life with speech synthesis.",
     "Harness the capabilities of MetaVoice-1B for seamless text to speech, an open-source audio model.",
-    "Discover the efficiency of MetaVoice-1B in text to speech, an innovative open-source audio model."
+    "Discover the efficiency of MetaVoice-1B in text to speech, an innovative open-source audio model.",
 ]
-
-
-def flush_queue(kqueue):
-    while not kqueue.empty():
-        try:
-            kqueue.get_nowait()
-        except queue.Empty:
-            pass
 
 
 @app.websocket("/audio")
@@ -37,17 +31,20 @@ async def audio_stream(websocket: WebSocket):
     start = time.perf_counter()
     await websocket.accept()
     flush()
-    print(f"connection made with client: {time.perf_counter() - start}s, streaming...")    
-    
+    print(f"connection made with client: {time.perf_counter() - start}s, streaming...")
+
     try:
         while True:
             text = await websocket.receive_text()
             print(f"received: {text}")
-                    
+
             if text == "<client_end>":
                 await websocket.send_text("<server_end>")
-                print("\n\n")
                 continue
+
+            # if text == "<flush>":
+            #     flush()
+            #     continue
 
             model.synthesise(
                 text=text,
@@ -64,9 +61,15 @@ async def audio_stream(websocket: WebSocket):
                 except queue.Empty:
                     print(f"finished speaking this utterance in: {time.perf_counter() - t0}")
                     break
-    
+
     except WebSocketDisconnect as e:
         print(f"WebSocket disconnected: {e.code}, {e.reason}")
+
+        os.kill(model.llm_process.pid, signal.SIGINT)
+        os.kill(model.decoder_process.pid, signal.SIGINT)
+
+        print("\n\n")
+
     except Exception as e:
         traceback.print_exc()
         print(f"error: {str(e)}")
@@ -77,4 +80,5 @@ if __name__ == "__main__":
     model = TTS()
 
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

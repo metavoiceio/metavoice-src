@@ -10,6 +10,7 @@ import librosa
 import scipy.io.wavfile  # type: ignore
 import torch
 import torch.multiprocessing
+
 try:
     torch.multiprocessing.set_start_method("spawn", force=True)
 except:
@@ -17,6 +18,7 @@ except:
 
 import tyro
 from huggingface_hub import snapshot_download  # type: ignore
+import queue
 
 from fam.llm.fast_inference_utils import build_model, encode_tokens, generate, device_sync
 from fam.llm.model_decoder import EmbeddingDecoder
@@ -25,12 +27,21 @@ from fam.llm.utils import (
     get_default_dtype,
     get_device,
     normalize_text,
-    get_cached_embedding, get_cached_file
+    get_cached_embedding,
+    get_cached_file,
 )
+
 # from fam.telemetry import TelemetryEvent
 # from fam.telemetry.posthog import PosthogClient
 
+
 # posthog = PosthogClient()  # see fam/telemetry/README.md for more information
+def flush_queue(kqueue):
+    while not kqueue.empty():
+        try:
+            kqueue.get_nowait()
+        except queue.Empty:
+            pass
 
 
 class AttrDict(dict):
@@ -39,10 +50,15 @@ class AttrDict(dict):
         self.__dict__ = self
 
 
-
-def llm_worker(text_queue: torch.multiprocessing.Queue, embeddings_queue: torch.multiprocessing.Queue, first_stage_ckpt: str, model_dir: str, quantisation_mode):
+def llm_worker(
+    text_queue: torch.multiprocessing.Queue,
+    embeddings_queue: torch.multiprocessing.Queue,
+    first_stage_ckpt: str,
+    model_dir: str,
+    quantisation_mode,
+):
     # init
-    device = "cuda:6"
+    device = "cuda:0"
     dtype = get_default_dtype()
     precision = {"float16": torch.float16, "bfloat16": torch.bfloat16}[dtype]
 
@@ -55,12 +71,12 @@ def llm_worker(text_queue: torch.multiprocessing.Queue, embeddings_queue: torch.
         compile_prefill=True,
         quantisation_mode=quantisation_mode,
     )
-    
+
     # run
-    try:
-        while True:
+    while True:
+        try:
             text, spk_ref_path, top_p, guidance_scale, temperature = text_queue.get()
-            
+
             encoded = encode_tokens(tokeniser, text, device=device)
             spk_emb = get_cached_embedding(
                 spk_ref_path,
@@ -68,7 +84,7 @@ def llm_worker(text_queue: torch.multiprocessing.Queue, embeddings_queue: torch.
             ).to(device=device, dtype=precision)
 
             device_sync(device=device)  # MKG
-            
+
             t0 = time.perf_counter()
             for audio_output_embs in generate(
                 model=model,
@@ -78,7 +94,7 @@ def llm_worker(text_queue: torch.multiprocessing.Queue, embeddings_queue: torch.
                 top_p=torch.tensor(top_p, device=device, dtype=precision),
                 guidance_scale=torch.tensor(guidance_scale, device=device, dtype=precision),
                 top_k=None,
-                yield_after_k_tokens=24
+                yield_after_k_tokens=24,
             ):
                 device_sync(device=device)
                 audio_output_embs = audio_output_embs.cpu()
@@ -90,19 +106,24 @@ def llm_worker(text_queue: torch.multiprocessing.Queue, embeddings_queue: torch.
 
             device_sync(device=device)  # MKG
 
-    except KeyboardInterrupt:
-        pass
-    finally:    
-        print("LLMThread stopped")
+        except KeyboardInterrupt:
+            print("llm_worker, stop event is set")
+            flush_queue(embeddings_queue)
+            flush_queue(text_queue)
 
 
-def decoder_worker(embeddings_queue: torch.multiprocessing.Queue, audio_out_queue: torch.multiprocessing.Queue, decoder_config_path, decoder_checkpoint_file):
+def decoder_worker(
+    embeddings_queue: torch.multiprocessing.Queue,
+    audio_out_queue: torch.multiprocessing.Queue,
+    decoder_config_path,
+    decoder_checkpoint_file,
+):
     # init
-    device = "cuda:7"
+    device = "cuda:0"
 
     with open(decoder_config_path) as f:
         decoder_config = AttrDict(json.loads(f.read()))
-    
+
     decoder = EmbeddingDecoder(decoder_config).to(device)
     state_dict_g = torch.load(decoder_checkpoint_file, map_location=device)
     decoder.load_state_dict(state_dict_g["generator"])
@@ -110,9 +131,9 @@ def decoder_worker(embeddings_queue: torch.multiprocessing.Queue, audio_out_queu
     decoder.remove_weight_norm()
 
     # run
-    try:
-        with torch.no_grad():
-            while True:
+    while True:
+        try:
+            with torch.no_grad():
                 output_embs = embeddings_queue.get()
 
                 t0 = time.perf_counter()
@@ -152,10 +173,9 @@ def decoder_worker(embeddings_queue: torch.multiprocessing.Queue, audio_out_queu
                 # print(f"decoder took: {time.perf_counter() - t0}")
 
                 audio_out_queue.put_nowait(audio)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        print("DecoderThread stopped")
+        except KeyboardInterrupt:
+            print("decoder_worker, stop event is set")
+            flush_queue(audio_out_queue)
 
 
 class TTS:
@@ -191,21 +211,26 @@ class TTS:
         self.audio_out_queue = torch.multiprocessing.Queue()
 
         # start processes
-        llm_process = torch.multiprocessing.Process(
+        self.llm_process = torch.multiprocessing.Process(
             target=llm_worker,
-            args=(self.text_queue, self.embeddings_queue, first_stage_ckpt, model_dir, quantisation_mode,)
+            args=(self.text_queue, self.embeddings_queue, first_stage_ckpt, model_dir, quantisation_mode),
         )
-        decoder_process = torch.multiprocessing.Process(
+        self.decoder_process = torch.multiprocessing.Process(
             target=decoder_worker,
-            args=(self.embeddings_queue, self.audio_out_queue, decoder_config_path, decoder_checkpoint_file,)
+            args=(
+                self.embeddings_queue,
+                self.audio_out_queue,
+                decoder_config_path,
+                decoder_checkpoint_file,
+            ),
         )
 
-        llm_process.start()
-        decoder_process.start()
+        self.llm_process.start()
+        self.decoder_process.start()
 
     def synthesise(self, text: str, spk_ref_path: str, top_p=0.95, guidance_scale=2.0, temperature=1.0) -> str:
         text = normalize_text(text)
-        
+
         spk_ref_path = get_cached_file(spk_ref_path)
         check_audio_file(spk_ref_path)
 
