@@ -48,9 +48,9 @@ def device_sync(device):
 
 torch._inductor.config.coordinate_descent_tuning = True
 torch._inductor.config.triton.unique_kernel_names = True
-torch._inductor.config.fx_graph_cache = (
-    True  # Experimental feature to reduce compilation times, will be on by default in future
-)
+# torch._inductor.config.fx_graph_cache = (
+#     True  # Experimental feature to reduce compilation times, will be on by default in future
+# )
 
 # imports need to happen after setting above flags
 from fam.llm.fast_model import Transformer
